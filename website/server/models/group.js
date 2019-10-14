@@ -7,11 +7,19 @@ import {
 import shared from '../../common';
 import _  from 'lodash';
 import { model as Challenge} from './challenge';
+import {
+  chatModel as Chat,
+  setUserStyles,
+  messageDefaults,
+} from './message';
 import * as Tasks from './task';
 import validator from 'validator';
 import { removeFromArray } from '../libs/collectionManipulators';
 import payments from '../libs/payments/payments';
-import { groupChatReceivedWebhook } from '../libs/webhook';
+import {
+  groupChatReceivedWebhook,
+  questActivityWebhook,
+} from '../libs/webhook';
 import {
   InternalServerError,
   BadRequest,
@@ -21,7 +29,6 @@ import baseModel from '../libs/baseModel';
 import { sendTxn as sendTxnEmail } from '../libs/email';
 import nconf from 'nconf';
 import { sendNotification as sendPushNotification } from '../libs/pushNotifications';
-import pusher from '../libs/pusher';
 import {
   syncableAttrs,
 } from '../libs/taskManager';
@@ -30,9 +37,12 @@ import {
 } from './subscriptionPlan';
 import amazonPayments from '../libs/payments/amazon';
 import stripePayments from '../libs/payments/stripe';
+import { getGroupChat, translateMessage } from '../libs/chat/group-chat';
 import { model as UserNotification } from './userNotification';
+import { sendChatPushNotifications } from '../libs/chat';
 
 const questScrolls = shared.content.quests;
+const questSeriesAchievements = shared.content.questSeriesAchievements;
 const Schema = mongoose.Schema;
 
 export const INVITES_LIMIT = 100; // must not be greater than MAX_EMAIL_INVITES_BY_USER
@@ -42,6 +52,8 @@ const NO_CHAT_NOTIFICATIONS = [TAVERN_ID];
 const LARGE_GROUP_COUNT_MESSAGE_CUTOFF = shared.constants.LARGE_GROUP_COUNT_MESSAGE_CUTOFF;
 const MAX_SUMMARY_SIZE_FOR_GUILDS = shared.constants.MAX_SUMMARY_SIZE_FOR_GUILDS;
 const GUILDS_PER_PAGE = shared.constants.GUILDS_PER_PAGE;
+
+const CHAT_FLAG_LIMIT_FOR_HIDING = shared.constants.CHAT_FLAG_LIMIT_FOR_HIDING;
 
 const CRON_SAFE_MODE = nconf.get('CRON_SAFE_MODE') === 'true';
 const CRON_SEMI_SAFE_MODE = nconf.get('CRON_SEMI_SAFE_MODE') === 'true';
@@ -57,42 +69,35 @@ export const SPAM_MESSAGE_LIMIT = 2;
 export const SPAM_WINDOW_LENGTH = 60000; // 1 minute
 export const SPAM_MIN_EXEMPT_CONTRIB_LEVEL = 4;
 
+export const MAX_CHAT_COUNT = 200;
+export const MAX_SUBBED_GROUP_CHAT_COUNT = 400;
+
 export let schema = new Schema({
-  name: {type: String, required: true},
-  summary: {type: String, maxlength: MAX_SUMMARY_SIZE_FOR_GUILDS},
+  name: {$type: String, required: true},
+  summary: {$type: String, maxlength: MAX_SUMMARY_SIZE_FOR_GUILDS},
   description: String,
-  leader: {type: String, ref: 'User', validate: [validator.isUUID, 'Invalid uuid.'], required: true},
-  type: {type: String, enum: ['guild', 'party'], required: true},
-  privacy: {type: String, enum: ['private', 'public'], default: 'private', required: true},
-  chat: Array,
-  /*
-  #    [{
-  #      timestamp: Date
-  #      user: String
-  #      text: String
-  #      contributor: String
-  #      uuid: String
-  #      id: String
-  #    }]
-  */
+  leader: {$type: String, ref: 'User', validate: [v => validator.isUUID(v), 'Invalid uuid.'], required: true},
+  type: {$type: String, enum: ['guild', 'party'], required: true},
+  privacy: {$type: String, enum: ['private', 'public'], default: 'private', required: true},
+  chat: Array, // Used for backward compatibility, but messages aren't stored here
   leaderOnly: { // restrict group actions to leader (members can't do them)
-    challenges: {type: Boolean, default: false, required: true},
-    // invites: {type: Boolean, default: false, required: true},
+    challenges: {$type: Boolean, default: false, required: true},
+    // invites: {$type: Boolean, default: false, required: true},
     // Some group plans prevent members from getting gems
-    getGems: {type: Boolean, default: false},
+    getGems: {$type: Boolean, default: false},
   },
-  memberCount: {type: Number, default: 1},
-  challengeCount: {type: Number, default: 0},
-  balance: {type: Number, default: 0},
+  memberCount: {$type: Number, default: 1},
+  challengeCount: {$type: Number, default: 0},
+  balance: {$type: Number, default: 0},
   logo: String,
   leaderMessage: String,
   quest: {
     key: String,
-    active: {type: Boolean, default: false},
-    leader: {type: String, ref: 'User'},
+    active: {$type: Boolean, default: false},
+    leader: {$type: String, ref: 'User'},
     progress: {
       hp: Number,
-      collect: {type: Schema.Types.Mixed, default: () => {
+      collect: {$type: Schema.Types.Mixed, default: () => {
         return {};
       }}, // {feather: 5, ingot: 3}
       rage: Number, // limit break / "energy stored in shell", for explosion-attacks
@@ -101,34 +106,35 @@ export let schema = new Schema({
     // Shows boolean for each party-member who has accepted the quest. Eg {UUID: true, UUID: false}. Once all users click
     // 'Accept', the quest begins. If a false user waits too long, probably a good sign to prod them or boot them.
     // TODO when booting user, remove from .joined and check again if we can now start the quest
-    members: {type: Schema.Types.Mixed, default: () => {
+    members: {$type: Schema.Types.Mixed, default: () => {
       return {};
     }},
-    extra: {type: Schema.Types.Mixed, default: () => {
+    extra: {$type: Schema.Types.Mixed, default: () => {
       return {};
     }},
   },
   tasksOrder: {
-    habits: [{type: String, ref: 'Task'}],
-    dailys: [{type: String, ref: 'Task'}],
-    todos: [{type: String, ref: 'Task'}],
-    rewards: [{type: String, ref: 'Task'}],
+    habits: [{$type: String, ref: 'Task'}],
+    dailys: [{$type: String, ref: 'Task'}],
+    todos: [{$type: String, ref: 'Task'}],
+    rewards: [{$type: String, ref: 'Task'}],
   },
   purchased: {
-    plan: {type: SubscriptionPlanSchema, default: () => {
+    plan: {$type: SubscriptionPlanSchema, default: () => {
       return {};
     }},
   },
-  managers: {type: Schema.Types.Mixed, default: () => {
+  managers: {$type: Schema.Types.Mixed, default: () => {
     return {};
   }},
   categories: [{
-    slug: {type: String},
-    name: {type: String},
+    slug: {$type: String},
+    name: {$type: String},
   }],
 }, {
   strict: true,
   minimize: false, // So empty objects are returned
+  typeKey: '$type', // So that we can use fields named `type`
 });
 
 schema.plugin(baseModel, {
@@ -171,24 +177,40 @@ schema.pre('remove', true, async function preRemoveGroup (next, done) {
   }
 });
 
-// return a clean object for user.quest
-function _cleanQuestProgress (merge) {
-  let clean = {
-    key: null,
-    progress: {
+// return clean updates for each user in a party without resetting their progress
+function _cleanQuestParty (merge) {
+  let updates = {
+    $set: {
+      'party.quest.key': null,
+      'party.quest.completed': null,
+      'party.quest.RSVPNeeded': false,
+    },
+  };
+
+  if (merge) _.merge(updates, merge);
+
+  return updates;
+}
+
+// return a clean user.quest of a particular user while keeping his progress
+function _cleanQuestUser (userProgress) {
+  if (!userProgress) {
+    userProgress = {
       up: 0,
       down: 0,
       collect: {},
       collectedItems: 0,
-    },
+    };
+  } else {
+    userProgress = userProgress.toObject();
+  }
+
+  let clean = {
+    key: null,
+    progress: userProgress,
     completed: null,
     RSVPNeeded: false,
   };
-
-  if (merge) {
-    _.merge(clean, _.omit(merge, 'progress'));
-    if (merge.progress) _.merge(clean.progress, merge.progress);
-  }
 
   return clean;
 }
@@ -319,54 +341,73 @@ schema.statics.getGroups = async function getGroups (options = {}) {
 // unless the user is an admin or said chat is posted by that user
 // Not putting into toJSON because there we can't access user
 // It also removes the _meta field that can be stored inside a chat message
-schema.statics.toJSONCleanChat = function groupToJSONCleanChat (group, user) {
-  let toJSON = group.toJSON();
-
-  if (!user.contributor.admin) {
-    _.remove(toJSON.chat, chatMsg => {
-      chatMsg.flags = {};
-      if (chatMsg._meta) chatMsg._meta = undefined;
-      return user._id !== chatMsg.uuid && chatMsg.flagCount >= 2;
-    });
+schema.statics.toJSONCleanChat = async function groupToJSONCleanChat (group, user) {
+  // @TODO: Adding this here for support the old chat, but we should depreciate accessing chat like this
+  // Also only return chat if requested, eventually we don't want to return chat here
+  if (group && group.chat) {
+    await getGroupChat(group);
   }
 
-  return toJSON;
+  const groupToJson = group.toJSON();
+  const userLang = user.preferences.language;
+
+  groupToJson.chat = groupToJson.chat
+    .map(chatMsg => {
+      // Translate system messages
+      if (!_.isEmpty(chatMsg.info)) {
+        chatMsg.text = translateMessage(userLang, chatMsg.info);
+      }
+
+      // Convert to timestamps because Android expects it
+      // old chats are saved with a numeric timestamp
+      // new chats use `Date` which then has to be converted to the numeric timestamp
+      if (chatMsg.timestamp && chatMsg.timestamp.getTime) {
+        chatMsg.timestamp = chatMsg.timestamp.getTime();
+      }
+
+      if (!user.contributor.admin) {
+        // Flags are hidden to non admins
+        chatMsg.flags = {};
+        if (chatMsg._meta) chatMsg._meta = undefined;
+
+        // Messages with too many flags are hidden to non-admins and non-authors
+        if (user._id !== chatMsg.uuid && chatMsg.flagCount >= CHAT_FLAG_LIMIT_FOR_HIDING) return undefined;
+      }
+
+      return chatMsg;
+    })
+    // Used to filter for undefined chat messages that should not be shown to non-admins
+    .filter(chatMsg => chatMsg !== undefined);
+
+  return groupToJson;
 };
 
-/**
- * Checks invitation uuids and emails for possible errors.
- *
- * @param  uuids  An array of user ids
- * @param  emails  An array of emails
- * @param  res  Express res object for use with translations
- * @throws BadRequest An error describing the issue with the invitations
- */
-schema.statics.validateInvitations = async function getInvitationError (uuids, emails, res, group = null) {
-  let uuidsIsArray = Array.isArray(uuids);
-  let emailsIsArray = Array.isArray(emails);
-  let emptyEmails = emailsIsArray && emails.length < 1;
-  let emptyUuids = uuidsIsArray && uuids.length < 1;
+function getInviteError (uuids, emails, usernames) {
+  const uuidsIsArray = Array.isArray(uuids);
+  const emailsIsArray = Array.isArray(emails);
+  const usernamesIsArray = Array.isArray(usernames);
+  const emptyEmails = emailsIsArray && emails.length < 1;
+  const emptyUuids = uuidsIsArray && uuids.length < 1;
+  const emptyUsernames = usernamesIsArray && usernames.length < 1;
 
   let errorString;
 
-  if (!uuids && !emails) {
+  if (!uuids && !emails && !usernames) {
     errorString = 'canOnlyInviteEmailUuid';
   } else if (uuids && !uuidsIsArray) {
     errorString = 'uuidsMustBeAnArray';
   } else if (emails && !emailsIsArray) {
     errorString = 'emailsMustBeAnArray';
-  } else if (!emails && emptyUuids) {
-    errorString = 'inviteMissingUuid';
-  } else if (!uuids && emptyEmails) {
-    errorString = 'inviteMissingEmail';
-  } else if (emptyEmails && emptyUuids) {
+  } else if (usernames && !usernamesIsArray) {
+    errorString = 'usernamesMustBeAnArray';
+  } else if ((!emails || emptyEmails) && (!uuids || emptyUuids) && (!usernames || emptyUsernames)) {
     errorString = 'inviteMustNotBeEmpty';
   }
 
-  if (errorString) {
-    throw new BadRequest(res.t(errorString));
-  }
+  return errorString;
+}
 
+function getInviteCount (uuids, emails) {
   let totalInvites = 0;
 
   if (uuids) {
@@ -377,6 +418,27 @@ schema.statics.validateInvitations = async function getInvitationError (uuids, e
     totalInvites += emails.length;
   }
 
+  return totalInvites;
+}
+
+/**
+ * Checks invitation uuids and emails for possible errors.
+ *
+ * @param  uuids  An array of User IDs
+ * @param  emails  An array of emails
+ * @param  res  Express res object for use with translations
+ * @throws BadRequest An error describing the issue with the invitations
+ */
+schema.statics.validateInvitations = async function getInvitationError (invites, res, group = null) {
+  const {
+    uuids,
+    emails,
+    usernames,
+  } = invites;
+  const errorString = getInviteError(uuids, emails, usernames);
+  if (errorString) throw new BadRequest(res.t(errorString));
+
+  const totalInvites = getInviteCount(uuids, emails);
   if (totalInvites > INVITES_LIMIT) {
     throw new BadRequest(res.t('canOnlyInviteMaxInvites', {maxInvites: INVITES_LIMIT}));
   }
@@ -450,103 +512,31 @@ schema.methods.getMemberCount = async function getMemberCount () {
   return await User.count(query).exec();
 };
 
-export function chatDefaults (msg, user) {
-  let message = {
-    id: shared.uuid(),
-    text: msg,
-    timestamp: Number(new Date()),
-    likes: {},
-    flags: {},
-    flagCount: 0,
-  };
+schema.methods.sendChat = function sendChat (options = {}) {
+  const {message, user, metaData, client, flagCount = 0, info = {}, translate} = options;
+  let newMessage = messageDefaults(message, user, client, flagCount, info);
+  let newChatMessage = new Chat();
+  newChatMessage = Object.assign(newChatMessage, newMessage);
+  newChatMessage.groupId = this._id;
 
-  if (user) {
-    _.defaults(message, {
-      uuid: user._id,
-      contributor: user.contributor && user.contributor.toObject(),
-      backer: user.backer && user.backer.toObject(),
-      user: user.profile.name,
-    });
-  } else {
-    message.uuid = 'system';
-  }
-
-  return message;
-}
-
-function setUserStyles (newMessage, user) {
-  let userStyles = {};
-  userStyles.items = {gear: {}};
-
-  let userCopy = user;
-  if (user.toObject) userCopy = user.toObject();
-
-  if (userCopy.items) {
-    userStyles.items.gear = {};
-    userStyles.items.gear.costume = Object.assign({}, userCopy.items.gear.costume);
-    userStyles.items.gear.equipped = Object.assign({}, userCopy.items.gear.equipped);
-
-    userStyles.items.currentMount = userCopy.items.currentMount;
-    userStyles.items.currentPet = userCopy.items.currentPet;
-  }
-
-
-  if (userCopy.preferences) {
-    userStyles.preferences = {};
-    if (userCopy.preferences.style) userStyles.preferences.style = userCopy.preferences.style;
-    userStyles.preferences.hair = userCopy.preferences.hair;
-    userStyles.preferences.skin = userCopy.preferences.skin;
-    userStyles.preferences.shirt = userCopy.preferences.shirt;
-    userStyles.preferences.chair = userCopy.preferences.chair;
-    userStyles.preferences.size = userCopy.preferences.size;
-    userStyles.preferences.chair = userCopy.preferences.chair;
-    userStyles.preferences.background = userCopy.preferences.background;
-    userStyles.preferences.costume = userCopy.preferences.costume;
-  }
-
-  if (userCopy.stats) {
-    userStyles.stats = {};
-    userStyles.stats.class = userCopy.stats.class;
-    if (userCopy.stats.buffs) {
-      userStyles.stats.buffs = {
-        seafoam: userCopy.stats.buffs.seafoam,
-        shinySeed: userCopy.stats.buffs.shinySeed,
-        spookySparkles: userCopy.stats.buffs.spookySparkles,
-        snowball: userCopy.stats.buffs.snowball,
-      };
-    }
-  }
-
-  newMessage.userStyles = userStyles;
-}
-
-schema.methods.sendChat = function sendChat (message, user, metaData) {
-  let newMessage = chatDefaults(message, user);
-
-  if (user) setUserStyles(newMessage, user);
+  if (user) setUserStyles(newChatMessage, user);
 
   // Optional data stored in the chat message but not returned
   // to the users that can be stored for debugging purposes
   if (metaData) {
-    newMessage._meta = metaData;
+    newChatMessage._meta = metaData;
   }
 
-  this.chat.unshift(newMessage);
+  // Activate the webhook for receiving group chat messages before
+  // newChatMessage is possibly returned
+  this.sendGroupChatReceivedWebhooks(newChatMessage);
 
-  const MAX_CHAT_COUNT = 200;
-  const MAX_SUBBED_GROUP_CHAT_COUNT = 400;
-
-  let maxCount = MAX_CHAT_COUNT;
-
-  if (this.isSubscribed()) {
-    maxCount = MAX_SUBBED_GROUP_CHAT_COUNT;
-  }
-
-  this.chat.splice(maxCount);
-
-  // do not send notifications for guilds with more than 5000 users and for the tavern
-  if (NO_CHAT_NOTIFICATIONS.indexOf(this._id) !== -1 || this.memberCount > LARGE_GROUP_COUNT_MESSAGE_CUTOFF) {
-    return;
+  // do not send notifications for:
+  // - groups that never send notifications (e.g., Tavern)
+  // - groups with very many users
+  // - messages that have already been flagged to hide them
+  if (NO_CHAT_NOTIFICATIONS.indexOf(this._id) !== -1 || this.memberCount > LARGE_GROUP_COUNT_MESSAGE_CUTOFF || newChatMessage.flagCount >= CHAT_FLAG_LIMIT_FOR_HIDING) {
+    return newChatMessage;
   }
 
   // Kick off chat notifications in the background.
@@ -585,13 +575,11 @@ schema.methods.sendChat = function sendChat (message, user, metaData) {
     User.update(query, lastSeenUpdateAddNew, {multi: true}).exec();
   });
 
-  // If the message being sent is a system message (not gone through the api.postChat controller)
-  // then notify Pusher about it (only parties for now)
-  if (newMessage.uuid === 'system' && this.privacy === 'private' && this.type === 'party') {
-    pusher.trigger(`presence-group-${this._id}`, 'new-chat', newMessage);
+  if (this.type === 'party' && user) {
+    sendChatPushNotifications(user, this, newChatMessage, translate);
   }
 
-  return newMessage;
+  return newChatMessage;
 };
 
 schema.methods.startQuest = async function startQuest (user) {
@@ -628,20 +616,24 @@ schema.methods.startQuest = async function startQuest (user) {
   removeFromArray(nonUserQuestMembers, user._id);
 
   // remove any users from quest.members who aren't in the party
-  let partyId = this._id;
-  let questMembers = this.quest.members;
-  await Promise.all(Object.keys(this.quest.members).map(memberId => {
-    return User.findOne({_id: memberId, 'party._id': partyId})
-      .select('_id')
-      .lean()
-      .exec()
-      .then((member) => {
-        if (!member) {
-          delete questMembers[memberId];
+  // and get the data necessary to send webhooks
+  const members = [];
+
+  await User.find({
+    _id: {$in: Object.keys(this.quest.members)},
+  })
+    .select('party.quest party._id items.quests auth preferences.emailNotifications preferences.pushNotifications preferences.language pushDevices profile.name webhooks')
+    .lean()
+    .exec()
+    .then(partyMembers => {
+      partyMembers.forEach(member => {
+        if (!member.party || member.party._id !== this._id) {
+          delete this.quest.members[member._id];
+        } else {
+          members.push(member);
         }
-        return;
       });
-  }));
+    });
 
   if (userIsParticipating) {
     user.party.quest.key = this.quest.key;
@@ -650,20 +642,23 @@ schema.methods.startQuest = async function startQuest (user) {
     user.markModified('party.quest');
   }
 
+  const promises = [];
+
   // Remove the quest from the quest leader items (if they are the current user)
   if (this.quest.leader === user._id) {
     user.items.quests[this.quest.key] -= 1;
     user.markModified('items.quests');
+    promises.push(user.save());
   } else { // another user is starting the quest, update the leader separately
-    await User.update({_id: this.quest.leader}, {
+    promises.push(User.update({_id: this.quest.leader}, {
       $inc: {
         [`items.quests.${this.quest.key}`]: -1,
       },
-    }).exec();
+    }).exec());
   }
 
   // update the remaining users
-  await User.update({
+  promises.push(User.update({
     _id: { $in: nonUserQuestMembers },
   }, {
     $set: {
@@ -671,48 +666,62 @@ schema.methods.startQuest = async function startQuest (user) {
       'party.quest.progress.down': 0,
       'party.quest.completed': null,
     },
-  }, { multi: true }).exec();
+  }, { multi: true }).exec());
+
+  await Promise.all(promises);
 
   // update the users who are not participating
   // Do not block updates
   User.update({
     _id: { $in: nonMembers },
-  }, {
-    $set: {
-      'party.quest': _cleanQuestProgress(),
-    },
-  }, { multi: true }).exec();
+  }, _cleanQuestParty(),
+  { multi: true }).exec();
 
-  // send notifications in the background without blocking
-  User.find(
-    { _id: { $in: nonUserQuestMembers } },
-    'party.quest items.quests auth.facebook auth.local preferences.emailNotifications preferences.pushNotifications pushDevices profile.name'
-  ).exec().then((membersToNotify) => {
-    let membersToEmail = _.filter(membersToNotify, (member) => {
+  const newMessage = this.sendChat({
+    message: `\`${shared.i18n.t('chatQuestStarted', {questName: quest.text('en')}, 'en')}\``,
+    metaData: {
+      participatingMembers: this.getParticipatingQuestMembers().join(', '),
+    },
+    info: {
+      type: 'quest_start',
+      quest: quest.key,
+    },
+  });
+  await newMessage.save();
+
+  const membersToEmail = [];
+
+  // send notifications and webhooks in the background without blocking
+  members.forEach(member => {
+    if (member._id !== user._id) {
       // send push notifications and filter users that disabled emails
-      return member.preferences.emailNotifications.questStarted !== false &&
-        member._id !== user._id;
-    });
-    sendTxnEmail(membersToEmail, 'quest-started', [
-      { name: 'PARTY_URL', content: '/party' },
-    ]);
-    let membersToPush = _.filter(membersToNotify, (member) => {
+      if (member.preferences.emailNotifications.questStarted !== false) {
+        membersToEmail.push(member);
+      }
+
       // send push notifications and filter users that disabled emails
-      return member.preferences.pushNotifications.questStarted !== false &&
-        member._id !== user._id;
-    });
-    _.each(membersToPush, (member) => {
-      sendPushNotification(member,
-        {
-          title: quest.text(),
-          message: `${shared.i18n.t('questStarted')}: ${quest.text()}`,
+      if (member.preferences.pushNotifications.questStarted !== false) {
+        const memberLang = member.preferences.language;
+        sendPushNotification(member, {
+          title: quest.text(memberLang),
+          message: shared.i18n.t('questStarted', memberLang),
           identifier: 'questStarted',
         });
+      }
+    }
+
+    // Send webhooks
+    questActivityWebhook.send(member, {
+      type: 'questStarted',
+      group: this,
+      quest,
     });
   });
-  this.sendChat(`\`Your quest, ${quest.text('en')}, has started.\``, null, {
-    participatingMembers: this.getParticipatingQuestMembers().join(', '),
-  });
+
+  // Send emails in bulk
+  sendTxnEmail(membersToEmail, 'quest-started', [
+    { name: 'PARTY_URL', content: '/party' },
+  ]);
 };
 
 schema.methods.sendGroupChatReceivedWebhooks = function sendGroupChatReceivedWebhooks (chat) {
@@ -733,8 +742,7 @@ schema.methods.sendGroupChatReceivedWebhooks = function sendGroupChatReceivedWeb
 
   User.find(query).select({webhooks: 1}).lean().exec().then((users) => {
     users.forEach((user) => {
-      let { webhooks } = user;
-      groupChatReceivedWebhook.send(webhooks, {
+      groupChatReceivedWebhook.send(user, {
         group: this,
         chat,
       });
@@ -742,7 +750,8 @@ schema.methods.sendGroupChatReceivedWebhooks = function sendGroupChatReceivedWeb
   });
 };
 
-schema.statics.cleanQuestProgress = _cleanQuestProgress;
+schema.statics.cleanQuestParty = _cleanQuestParty;
+schema.statics.cleanQuestUser = _cleanQuestUser;
 
 // returns a clean object for group.quest
 schema.statics.cleanGroupQuest = function cleanGroupQuest () {
@@ -819,7 +828,7 @@ schema.methods.finishQuest = async function finishQuest (quest) {
   if (this._id === TAVERN_ID) {
     updates.$set['party.quest.completed'] = questK; // Just show the notif
   } else {
-    updates.$set['party.quest'] = _cleanQuestProgress({completed: questK}); // clear quest progress
+    _.merge(updates, _cleanQuestParty({$set: {'party.quest.completed': questK}})); // clear quest progress
   }
 
   _.each(_.reject(quest.drop.items, 'onlyOwner'), (item) => {
@@ -850,42 +859,64 @@ schema.methods.finishQuest = async function finishQuest (quest) {
     }
   });
 
-  let masterClasserQuests = [
-    'dilatoryDistress1',
-    'dilatoryDistress2',
-    'dilatoryDistress3',
-    'mayhemMistiflying1',
-    'mayhemMistiflying2',
-    'mayhemMistiflying3',
-    'stoikalmCalamity1',
-    'stoikalmCalamity2',
-    'stoikalmCalamity3',
-    'taskwoodsTerror1',
-    'taskwoodsTerror2',
-    'taskwoodsTerror3',
-    'lostMasterclasser1',
-    'lostMasterclasser2',
-    'lostMasterclasser3',
-    'lostMasterclasser4',
-  ];
-
-  if (masterClasserQuests.includes(questK)) {
-    let lostMasterclasserQuery = {
-      'achievements.lostMasterclasser': {$ne: true},
-    };
-    masterClasserQuests.forEach(questName => {
-      lostMasterclasserQuery[`achievements.quests.${questName}`] = {$gt: 0};
+  // Send webhooks in background
+  // @TODO move the find users part to a worker as well, not just the http request
+  User.find({
+    _id: {$in: participants},
+    webhooks: {
+      $elemMatch: {
+        type: 'questActivity',
+        'options.questFinished': true,
+      },
+    },
+  })
+    .select('_id webhooks')
+    .lean()
+    .exec()
+    .then(participantsWithWebhook => {
+      participantsWithWebhook.forEach(participantWithWebhook => {
+        // Send webhooks
+        questActivityWebhook.send(participantWithWebhook, {
+          type: 'questFinished',
+          group: this,
+          quest,
+        });
+      });
     });
-    let lostMasterclasserUpdate = {
-      $set: {'achievements.lostMasterclasser': true},
-    };
 
-    promises = promises.concat(participants.map(userId => {
-      return _updateUserWithRetries(userId, lostMasterclasserUpdate, null, lostMasterclasserQuery);
-    }));
-  }
+  _.forEach(questSeriesAchievements, (questList, achievement) => {
+    if (questList.includes(questK)) {
+      let questAchievementQuery = {};
+      questAchievementQuery[`achievements.${achievement}`] = {$ne: true};
 
-  return await Promise.all(promises);
+      _.forEach(questList, (questName) => {
+        if (questName !== questK) {
+          questAchievementQuery[`achievements.quests.${questName}`] = {$gt: 0};
+        }
+      });
+
+      let questAchievementUpdate = {$set: {}, $push: {}};
+      questAchievementUpdate.$set[`achievements.${achievement}`] = true;
+      const achievementTitleCase = `${achievement.slice(0, 1).toUpperCase()}${achievement.slice(1, achievement.length)}`;
+      const achievementSnakeCase = `ACHIEVEMENT_${_.snakeCase(achievement).toUpperCase()}`;
+      questAchievementUpdate.$push = {
+        notifications: new UserNotification({
+          type: achievementSnakeCase,
+          data: {
+            achievement,
+            message: `${shared.i18n.t('modalAchievement')} ${shared.i18n.t(`achievement${achievementTitleCase}`)}`,
+            modalText: shared.i18n.t(`achievement${achievementTitleCase}ModalText`),
+          },
+        }).toObject(),
+      };
+
+      promises.push(participants.map(userId => {
+        return _updateUserWithRetries(userId, questAchievementUpdate, null, questAchievementQuery);
+      }));
+    }
+  });
+
+  await Promise.all(promises);
 };
 
 function _isOnQuest (user, progress, group) {
@@ -905,19 +936,46 @@ schema.methods._processBossQuest = async function processBossQuest (options) {
   let updates = {
     $inc: {'stats.hp': down},
   };
+  const promises = [];
 
   group.quest.progress.hp -= progress.up;
-  // TODO Create a party preferred language option so emits like this can be localized. Suggestion: Always display the English version too. Or, if English is not displayed to the players, at least include it in a new field in the chat object that's visible in the database - essential for admins when troubleshooting quests!
-  let playerAttack = `${user.profile.name} attacks ${quest.boss.name('en')} for ${progress.up.toFixed(1)} damage.`;
-  let bossAttack = CRON_SAFE_MODE || CRON_SEMI_SAFE_MODE ? `${quest.boss.name('en')} does not attack, because it respects the fact that there are some bugs\` \`post-maintenance and it doesn't want to hurt anyone unfairly. It will continue its rampage soon!` : `${quest.boss.name('en')} attacks party for ${Math.abs(down).toFixed(1)} damage.`;
-  // TODO Consider putting the safe mode boss attack message in an ENV var
-  group.sendChat(`\`${playerAttack}\` \`${bossAttack}\``);
+  if (CRON_SAFE_MODE || CRON_SEMI_SAFE_MODE) {
+    const groupMessage = group.sendChat({
+      message: `\`${shared.i18n.t('chatBossDontAttack', {bossName: quest.boss.name('en')}, 'en')}\``,
+      info: {
+        type: 'boss_dont_attack',
+        user: user.profile.name,
+        quest: group.quest.key,
+        userDamage: progress.up.toFixed(1),
+      },
+    });
+    promises.push(groupMessage.save());
+  } else {
+    const groupMessage = group.sendChat({
+      message: `\`${shared.i18n.t('chatBossDamage', {username: user.profile.name, bossName: quest.boss.name('en'), userDamage: progress.up.toFixed(1), bossDamage: Math.abs(down).toFixed(1)}, user.preferences.language)}\``,
+      info: {
+        type: 'boss_damage',
+        user: user.profile.name,
+        quest: group.quest.key,
+        userDamage: progress.up.toFixed(1),
+        bossDamage: Math.abs(down).toFixed(1),
+      },
+    });
+    promises.push(groupMessage.save());
+  }
 
   // If boss has Rage, increment Rage as well
   if (quest.boss.rage) {
     group.quest.progress.rage += Math.abs(down);
     if (group.quest.progress.rage >= quest.boss.rage.value) {
-      group.sendChat(quest.boss.rage.effect('en'));
+      const rageMessage = group.sendChat({
+        message: quest.boss.rage.effect('en'),
+        info: {
+          type: 'boss_rage',
+          quest: quest.key,
+        },
+      });
+      promises.push(rageMessage.save());
       group.quest.progress.rage = 0;
 
       // TODO To make Rage effects more expandable, let's turn these into functions in quest.boss.rage
@@ -944,13 +1002,21 @@ schema.methods._processBossQuest = async function processBossQuest (options) {
 
   // Boss slain, finish quest
   if (group.quest.progress.hp <= 0) {
-    group.sendChat(`\`You defeated ${quest.boss.name('en')}! Questing party members receive the rewards of victory.\``);
+    const questFinishChat = group.sendChat({
+      message: `\`${shared.i18n.t('chatBossDefeated', {bossName: quest.boss.name('en')}, 'en')}\``,
+      info: {
+        type: 'boss_defeated',
+        quest: quest.key,
+      },
+    });
+    promises.push(questFinishChat.save());
 
     // Participants: Grant rewards & achievements, finish quest
     await group.finishQuest(shared.content.quests[group.quest.key]);
   }
 
-  return await group.save();
+  promises.unshift(group.save());
+  return await Promise.all(promises);
 };
 
 schema.methods._processCollectionQuest = async function processCollectionQuest (options) {
@@ -995,21 +1061,42 @@ schema.methods._processCollectionQuest = async function processCollectionQuest (
   }, []);
 
   foundText = foundText.join(', ');
-  group.sendChat(`\`${user.profile.name} found ${foundText}.\``);
+  const foundChat = group.sendChat({
+    message: `\`${shared.i18n.t('chatFindItems', {username: user.profile.name, items: foundText}, 'en')}\``,
+    info: {
+      type: 'user_found_items',
+      user: user.profile.name,
+      quest: quest.key,
+      items: itemsFound,
+    },
+  });
   group.markModified('quest.progress.collect');
 
   // Still needs completing
-  if (_.find(quest.collect, (v, k) => {
+  const needsCompleted = _.find(quest.collect, (v, k) => {
     return group.quest.progress.collect[k] < v.count;
-  })) return await group.save();
+  });
+
+  if (needsCompleted) {
+    return await Promise.all([group.save(), foundChat.save()]);
+  }
 
   await group.finishQuest(quest);
-  group.sendChat('`All items found! Party has received their rewards.`');
+  const allItemsFoundChat = group.sendChat({
+    message: `\`${shared.i18n.t('chatItemQuestFinish', 'en')}\``,
+    info: {
+      type: 'all_items_found',
+    },
+  });
 
-  return await group.save();
+  const promises = [group.save(), foundChat.save(), allItemsFoundChat.save()];
+
+  return await Promise.all(promises);
 };
 
 schema.statics.processQuestProgress = async function processQuestProgress (user, progress) {
+  if (user.preferences.sleep) return;
+
   let group = await this.getGroup({user, groupId: 'party'});
 
   if (!_isOnQuest(user, progress, group)) return;
@@ -1020,7 +1107,7 @@ schema.statics.processQuestProgress = async function processQuestProgress (user,
 
   let questType = quest.boss ? 'Boss' : 'Collection';
 
-  await group[`_process${questType}Quest`]({
+  await group[`_process${questType}Quest`]({ // _processBossQuest, _processCollectionQuest
     user,
     progress,
     group,
@@ -1050,6 +1137,7 @@ process.nextTick(() => {
 // returns a promise
 schema.statics.tavernBoss = async function tavernBoss (user, progress) {
   if (!progress) return;
+  if (user.preferences.sleep) return;
 
   // hack: prevent crazy damage to world boss
   let dmg = Math.min(900, Math.abs(progress.up || 0));
@@ -1060,8 +1148,17 @@ schema.statics.tavernBoss = async function tavernBoss (user, progress) {
 
   let quest = shared.content.quests[tavern.quest.key];
 
+  const chatPromises = [];
+
   if (tavern.quest.progress.hp <= 0) {
-    tavern.sendChat(quest.completionChat('en'));
+    const completeChat = tavern.sendChat({
+      message: quest.completionChat('en'),
+      info: {
+        type: 'tavern_quest_completed',
+        quest: quest.key,
+      },
+    });
+    chatPromises.push(completeChat.save());
     await tavern.finishQuest(quest);
     _.assign(tavernQuest, {extra: null});
     return tavern.save();
@@ -1089,10 +1186,25 @@ schema.statics.tavernBoss = async function tavernBoss (user, progress) {
       }
 
       if (!scene) {
-        tavern.sendChat(`\`${quest.boss.name('en')} tries to unleash ${quest.boss.rage.title('en')} but is too tired.\``);
+        const tiredChat = tavern.sendChat({
+          message: `\`${shared.i18n.t('tavernBossTired', {rageName: quest.boss.rage.title('en'), bossName: quest.boss.name('en')}, 'en')}\``,
+          info: {
+            type: 'tavern_boss_rage_tired',
+            quest: quest.key,
+          },
+        });
+        chatPromises.push(tiredChat.save());
         tavern.quest.progress.rage = 0; // quest.boss.rage.value;
       } else {
-        tavern.sendChat(quest.boss.rage[scene]('en'));
+        const rageChat = tavern.sendChat({
+          message: quest.boss.rage[scene]('en'),
+          info: {
+            type: 'tavern_boss_rage',
+            quest: quest.key,
+            scene,
+          },
+        });
+        chatPromises.push(rageChat.save());
         tavern.quest.extra.worldDmg[scene] = true;
         tavern.markModified('quest.extra.worldDmg');
         tavern.quest.progress.rage = 0;
@@ -1103,7 +1215,14 @@ schema.statics.tavernBoss = async function tavernBoss (user, progress) {
     }
 
     if (quest.boss.desperation && tavern.quest.progress.hp < quest.boss.desperation.threshold && !tavern.quest.extra.desperate) {
-      tavern.sendChat(quest.boss.desperation.text('en'));
+      const progressChat = tavern.sendChat({
+        message: quest.boss.desperation.text('en'),
+        info: {
+          type: 'tavern_boss_desperation',
+          quest: quest.key,
+        },
+      });
+      chatPromises.push(progressChat.save());
       tavern.quest.extra.desperate = true;
       tavern.quest.extra.def = quest.boss.desperation.def;
       tavern.quest.extra.str = quest.boss.desperation.str;
@@ -1111,7 +1230,9 @@ schema.statics.tavernBoss = async function tavernBoss (user, progress) {
     }
 
     _.assign(tavernQuest, tavern.quest.toObject());
-    return tavern.save();
+
+    chatPromises.unshift(tavern.save());
+    return Promise.all(chatPromises);
   }
 };
 
@@ -1135,34 +1256,31 @@ schema.methods.leave = async function leaveGroup (user, keep = 'keep-all', keepC
     }).exec();
 
     let challengesToRemoveUserFrom = challenges.map(chal => {
-      return chal.unlinkTasks(user, keep);
+      return chal.unlinkTasks(user, keep, false);
     });
     await Promise.all(challengesToRemoveUserFrom);
   }
 
-  // Unlink group tasks)
+  // Unlink group tasks
   let assignedTasks = await Tasks.Task.find({
     'group.id': group._id,
     userId: {$exists: false},
     'group.assignedUsers': user._id,
   }).exec();
   let assignedTasksToRemoveUserFrom = assignedTasks.map(task => {
-    return this.unlinkTask(task, user, keep);
+    return this.unlinkTask(task, user, keep, false);
   });
   await Promise.all(assignedTasksToRemoveUserFrom);
 
-  let promises = [];
+  // the user could be modified by calls to `unlinkTask` for challenge and group tasks
+  // it has not been saved before to avoid multiple saves in parallel
+  let promises = user.isModified() ? [user.save()] : [];
 
   // remove the group from the user's groups
   if (group.type === 'guild') {
     promises.push(User.update({_id: user._id}, {$pull: {guilds: group._id}}).exec());
   } else {
     promises.push(User.update({_id: user._id}, {$set: {party: {}}}).exec());
-    // Tell the realtime clients that a user has left
-    // If the user that left is still connected, they'll get disconnected
-    pusher.trigger(`presence-group-${group._id}`, 'user-left', {
-      userId: user._id,
-    });
 
     update.$unset = {[`quest.members.${user._id}`]: 1};
   }
@@ -1231,6 +1349,7 @@ schema.methods.updateTask = async function updateTask (taskToSync, options = {})
 
   updateCmd.$set['group.approval.required'] = taskToSync.group.approval.required;
   updateCmd.$set['group.assignedUsers'] = taskToSync.group.assignedUsers;
+  updateCmd.$set['group.sharedCompletion'] = taskToSync.group.sharedCompletion;
 
   let taskSchema = Tasks[taskToSync.type];
 
@@ -1316,7 +1435,8 @@ schema.methods.syncTask = async function groupSyncTask (taskToSync, user) {
     matchingTask.group.id = taskToSync.group.id;
     matchingTask.userId = user._id;
     matchingTask.group.taskId = taskToSync._id;
-    user.tasksOrder[`${taskToSync.type}s`].push(matchingTask._id);
+    matchingTask.group.assignedDate = new Date();
+    user.tasksOrder[`${taskToSync.type}s`].unshift(matchingTask._id);
   } else {
     _.merge(matchingTask, syncableAttrs(taskToSync));
     // Make sure the task is in user.tasksOrder
@@ -1326,6 +1446,7 @@ schema.methods.syncTask = async function groupSyncTask (taskToSync, user) {
 
   matchingTask.group.approval.required = taskToSync.group.approval.required;
   matchingTask.group.assignedUsers = taskToSync.group.assignedUsers;
+  matchingTask.group.sharedCompletion = taskToSync.group.sharedCompletion;
 
   //  sync checklist
   if (taskToSync.checklist) {
@@ -1344,7 +1465,7 @@ schema.methods.syncTask = async function groupSyncTask (taskToSync, user) {
   return Promise.all(toSave);
 };
 
-schema.methods.unlinkTask = async function groupUnlinkTask (unlinkingTask, user, keep) {
+schema.methods.unlinkTask = async function groupUnlinkTask (unlinkingTask, user, keep, saveUser = true) {
   let findQuery = {
     'group.taskId': unlinkingTask._id,
     userId: user._id,
@@ -1358,16 +1479,26 @@ schema.methods.unlinkTask = async function groupUnlinkTask (unlinkingTask, user,
       $set: {group: {}},
     }).exec();
 
-    await user.save();
+    // When multiple tasks are being unlinked at the same time,
+    // save the user once outside of this function
+    if (saveUser) await user.save();
   } else { // keep = 'remove-all'
     let task = await Tasks.Task.findOne(findQuery).select('_id type completed').exec();
     // Remove task from user.tasksOrder and delete them
-    if (task.type !== 'todo' || !task.completed) {
+    if (task && (task.type !== 'todo' || !task.completed)) {
       removeFromArray(user.tasksOrder[`${task.type}s`], task._id);
       user.markModified('tasksOrder');
     }
 
-    return Promise.all([task.remove(), user.save(), unlinkingTask.save()]);
+    let promises = [unlinkingTask.save()];
+    if (task) {
+      promises.push(task.remove());
+    }
+    // When multiple tasks are being unlinked at the same time,
+    // save the user once outside of this function
+    if (saveUser) promises.push(user.save());
+
+    return Promise.all(promises);
   }
 };
 
@@ -1382,6 +1513,30 @@ schema.methods.removeTask = async function groupRemoveTask (task) {
   }, {
     $set: {'group.broken': 'TASK_DELETED'},
   }, {multi: true}).exec();
+
+  // Get Managers
+  const managerIds = Object.keys(group.managers);
+  managerIds.push(group.leader);
+  const managers = await User.find({_id: managerIds}, 'notifications').exec(); // Use this method so we can get access to notifications
+
+  // Remove old notifications
+  let removalPromises = [];
+  managers.forEach((manager) => {
+    let notificationIndex = manager.notifications.findIndex(function findNotification (notification) {
+      return notification && notification.data && notification.data.groupTaskId === task._id && notification.type === 'GROUP_TASK_APPROVAL';
+    });
+
+    if (notificationIndex !== -1) {
+      manager.notifications.splice(notificationIndex, 1);
+      removalPromises.push(manager.save());
+    }
+  });
+
+  removeFromArray(group.tasksOrder[`${task.type}s`], task._id);
+  group.markModified('tasksOrder');
+  removalPromises.push(group.save());
+
+  return await Promise.all(removalPromises);
 };
 
 // Returns true if the user has reached the spam message limit
@@ -1417,7 +1572,12 @@ schema.methods.isSubscribed = function isSubscribed () {
 
 schema.methods.hasNotCancelled = function hasNotCancelled () {
   let plan = this.purchased.plan;
-  return this.isSubscribed() && !plan.dateTerminated;
+  return Boolean(this.isSubscribed() && !plan.dateTerminated);
+};
+
+schema.methods.hasCancelled = function hasNotCancelled () {
+  let plan = this.purchased.plan;
+  return Boolean(this.isSubscribed() && plan.dateTerminated);
 };
 
 schema.methods.updateGroupPlan = async function updateGroupPlan (removingMember) {

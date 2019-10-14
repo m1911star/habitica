@@ -2,8 +2,8 @@
 
 import {
   generateUser,
-  translate as t,
 } from '../../../../../helpers/api-integration/v3';
+import apiError from '../../../../../../website/server/libs/apiError';
 
 describe('POST /user/buy-gear/:key', () => {
   let user;
@@ -21,7 +21,7 @@ describe('POST /user/buy-gear/:key', () => {
       .to.eventually.be.rejected.and.eql({
         code: 404,
         error: 'NotFound',
-        message: t('itemNotFound', {key: 'notExisting'}),
+        message: apiError('itemNotFound', {key: 'notExisting'}),
       });
   });
 
@@ -51,6 +51,17 @@ describe('POST /user/buy-gear/:key', () => {
         code: 401,
         error: 'NotAuthorized',
         message: 'You need to purchase a lower level gear before this one.',
+      });
+  });
+
+  it('returns an error if tries to buy gear from a different class', async () => {
+    let key = 'armor_rogue_1';
+
+    return expect(user.post(`/user/buy-gear/${key}`))
+      .to.eventually.be.rejected.and.eql({
+        code: 401,
+        error: 'NotAuthorized',
+        message: 'You can\'t buy this item.',
       });
   });
 });

@@ -3,7 +3,7 @@ import {
   generateChallenge,
   createAndPopulateGroup,
   translate as t,
-} from '../../../../helpers/api-v3-integration.helper';
+} from '../../../../helpers/api-integration/v3';
 import { TAVERN_ID } from '../../../../../website/common/script/constants';
 
 describe('GET challenges/groups/:groupId', () => {
@@ -25,7 +25,9 @@ describe('GET challenges/groups/:groupId', () => {
       nonMember = await generateUser();
 
       challenge = await generateChallenge(user, group);
+      await user.post(`/challenges/${challenge._id}/join`);
       challenge2 = await generateChallenge(user, group);
+      await user.post(`/challenges/${challenge2._id}/join`);
     });
 
     it('should return group challenges for non member with populated leader', async () => {
@@ -37,6 +39,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: publicGuild.leader._id,
         id: publicGuild.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
       let foundChallenge2 = _.find(challenges, { _id: challenge2._id });
       expect(foundChallenge2).to.exist;
@@ -44,6 +54,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: publicGuild.leader._id,
         id: publicGuild.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
     });
 
@@ -56,6 +74,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: publicGuild.leader._id,
         id: publicGuild.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
       let foundChallenge2 = _.find(challenges, { _id: challenge2._id });
       expect(foundChallenge2).to.exist;
@@ -63,6 +89,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: publicGuild.leader._id,
         id: publicGuild.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
     });
 
@@ -73,6 +107,7 @@ describe('GET challenges/groups/:groupId', () => {
       expect(foundChallengeIndex).to.eql(0);
 
       let newChallenge = await generateChallenge(user, publicGuild);
+      await user.post(`/challenges/${newChallenge._id}/join`);
 
       challenges = await user.get(`/challenges/groups/${publicGuild._id}`);
 
@@ -99,7 +134,9 @@ describe('GET challenges/groups/:groupId', () => {
       nonMember = await generateUser();
 
       challenge = await generateChallenge(user, group);
+      await user.post(`/challenges/${challenge._id}/join`);
       challenge2 = await generateChallenge(user, group);
+      await user.post(`/challenges/${challenge2._id}/join`);
     });
 
     it('should prevent non-member from seeing challenges', async () => {
@@ -120,6 +157,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: privateGuild.leader._id,
         id: privateGuild.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
       let foundChallenge2 = _.find(challenges, { _id: challenge2._id });
       expect(foundChallenge2).to.exist;
@@ -127,6 +172,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: privateGuild.leader._id,
         id: privateGuild.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
     });
   });
@@ -156,9 +209,12 @@ describe('GET challenges/groups/:groupId', () => {
           slug: 'habitica_official',
         }],
       });
+      await user.post(`/challenges/${officialChallenge._id}/join`);
 
       challenge = await generateChallenge(user, group);
+      await user.post(`/challenges/${challenge._id}/join`);
       challenge2 = await generateChallenge(user, group);
+      await user.post(`/challenges/${challenge2._id}/join`);
     });
 
     it('should return official challenges first', async () => {
@@ -178,6 +234,7 @@ describe('GET challenges/groups/:groupId', () => {
       expect(foundChallengeIndex).to.eql(1);
 
       let newChallenge = await generateChallenge(user, publicGuild);
+      await user.post(`/challenges/${newChallenge._id}/join`);
 
       challenges = await user.get(`/challenges/groups/${publicGuild._id}`);
 
@@ -203,7 +260,9 @@ describe('GET challenges/groups/:groupId', () => {
       nonMember = await generateUser();
 
       challenge = await generateChallenge(user, group);
+      await user.post(`/challenges/${challenge._id}/join`);
       challenge2 = await generateChallenge(user, group);
+      await user.post(`/challenges/${challenge2._id}/join`);
     });
 
     it('should prevent non-member from seeing challenges', async () => {
@@ -224,6 +283,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: party.leader._id,
         id: party.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
       let foundChallenge2 = _.find(challenges, { _id: challenge2._id });
       expect(foundChallenge2).to.exist;
@@ -231,6 +298,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: party.leader._id,
         id: party.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
     });
 
@@ -243,6 +318,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: party.leader._id,
         id: party.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
       let foundChallenge2 = _.find(challenges, { _id: challenge2._id });
       expect(foundChallenge2).to.exist;
@@ -250,6 +333,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: party.leader._id,
         id: party.leader._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
     });
   });
@@ -263,7 +354,9 @@ describe('GET challenges/groups/:groupId', () => {
       tavern = await user.get(`/groups/${TAVERN_ID}`);
 
       challenge = await generateChallenge(user, tavern, {prize: 1});
+      await user.post(`/challenges/${challenge._id}/join`);
       challenge2 = await generateChallenge(user, tavern, {prize: 1});
+      await user.post(`/challenges/${challenge2._id}/join`);
     });
 
     it('should return tavern challenges with populated leader', async () => {
@@ -275,6 +368,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: user._id,
         id: user._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
       let foundChallenge2 = _.find(challenges, { _id: challenge2._id });
       expect(foundChallenge2).to.exist;
@@ -282,6 +383,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: user._id,
         id: user._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
     });
 
@@ -294,6 +403,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: user._id,
         id: user._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
       let foundChallenge2 = _.find(challenges, { _id: challenge2._id });
       expect(foundChallenge2).to.exist;
@@ -301,6 +418,14 @@ describe('GET challenges/groups/:groupId', () => {
         _id: user._id,
         id: user._id,
         profile: {name: user.profile.name},
+        auth: {
+          local: {
+            username: user.auth.local.username,
+          },
+        },
+        flags: {
+          verifiedUsername: true,
+        },
       });
     });
   });

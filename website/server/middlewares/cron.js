@@ -23,7 +23,6 @@ async function checkForActiveCron (user, now) {
   }, {
     $set: {
       _cronSignature,
-      lastCron: now, // setting lastCron now so we don't risk re-running parts of cron if it fails
       'auth.timestamps.loggedin': now,
     },
   }).exec();
@@ -33,6 +32,14 @@ async function checkForActiveCron (user, now) {
   if (userUpdateResult.nMatched === 0 || userUpdateResult.nModified === 0) {
     throw new Error('CRON_ALREADY_RUNNING');
   }
+}
+
+async function updateLastCron (user, now) {
+  await User.update({
+    _id: user._id,
+  }, {
+    lastCron: now, // setting lastCron now so we don't risk re-running parts of cron if it fails
+  }).exec();
 }
 
 async function unlockUser (user) {
@@ -51,9 +58,12 @@ async function cronAsync (req, res) {
   let now = new Date();
 
   try {
+    await checkForActiveCron(user, now);
+
+    user = res.locals.user = await User.findOne({_id: user._id}).exec();
     let {daysMissed, timezoneOffsetFromUserPrefs} = user.daysUserHasMissed(now, req);
 
-    await checkForActiveCron(user, now);
+    await updateLastCron(user, now);
 
     if (daysMissed <= 0) {
       if (user.isModified()) await user.save();
@@ -95,8 +105,19 @@ async function cronAsync (req, res) {
 
     // Save user and tasks
     let toSave = [user.save()];
-    tasks.forEach(task => {
+    tasks.forEach(async task => {
       if (task.isModified()) toSave.push(task.save());
+      if (task.isModified() && task.group && task.group.taskId) {
+        const groupTask = await Tasks.Task.findOne({
+          _id: task.group.taskId,
+        }).exec();
+
+        if (groupTask) {
+          let delta = Math.pow(0.9747, task.value) * -1;
+          if (groupTask.group.assignedUsers) delta /= groupTask.group.assignedUsers.length;
+          await groupTask.scoreChallengeTask(delta, 'down');
+        }
+      }
     });
     await Promise.all(toSave);
 

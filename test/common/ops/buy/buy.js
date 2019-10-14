@@ -8,6 +8,8 @@ import {
 } from '../../../../website/common/script/libs/errors';
 import i18n from '../../../../website/common/script/i18n';
 import content from '../../../../website/common/script/content/index';
+import errorMessage from '../../../../website/common/script/libs/errorMessage';
+import { defaultsDeep } from 'lodash';
 
 describe('shared.ops.buy', () => {
   let user;
@@ -15,6 +17,10 @@ describe('shared.ops.buy', () => {
 
   beforeEach(() => {
     user = generateUser({
+      stats: { gp: 200 },
+    });
+
+    defaultsDeep(user, {
       items: {
         gear: {
           owned: {
@@ -25,7 +31,6 @@ describe('shared.ops.buy', () => {
           },
         },
       },
-      stats: { gp: 200 },
     });
 
     sinon.stub(analytics, 'track');
@@ -40,7 +45,7 @@ describe('shared.ops.buy', () => {
       buy(user);
     } catch (err) {
       expect(err).to.be.an.instanceof(BadRequest);
-      expect(err.message).to.equal(i18n.t('missingKeyParam'));
+      expect(err.message).to.equal(errorMessage('missingKeyParam'));
       done();
     }
   });
@@ -68,6 +73,20 @@ describe('shared.ops.buy', () => {
       eyewear_special_redTopFrame: true,
       eyewear_special_whiteTopFrame: true,
       eyewear_special_yellowTopFrame: true,
+      headAccessory_special_blackHeadband: true,
+      headAccessory_special_blueHeadband: true,
+      headAccessory_special_greenHeadband: true,
+      headAccessory_special_pinkHeadband: true,
+      headAccessory_special_redHeadband: true,
+      headAccessory_special_whiteHeadband: true,
+      headAccessory_special_yellowHeadband: true,
+      eyewear_special_blackHalfMoon: true,
+      eyewear_special_blueHalfMoon: true,
+      eyewear_special_greenHalfMoon: true,
+      eyewear_special_pinkHalfMoon: true,
+      eyewear_special_redHalfMoon: true,
+      eyewear_special_whiteHalfMoon: true,
+      eyewear_special_yellowHalfMoon: true,
     });
   });
 
@@ -129,5 +148,53 @@ describe('shared.ops.buy', () => {
     user.stats.hp = 30;
     buy(user, {params: {key: 'potion'}, quantity: 2});
     expect(user.stats.hp).to.eql(50);
+  });
+
+  it('errors if user supplies a non-numeric quantity', (done) => {
+    try {
+      buy(user, {
+        params: {
+          key: 'dilatoryDistress1',
+        },
+        type: 'quest',
+        quantity: 'bogle',
+      });
+    } catch (err) {
+      expect(err).to.be.an.instanceof(BadRequest);
+      expect(err.message).to.equal(errorMessage('invalidQuantity'));
+      done();
+    }
+  });
+
+  it('errors if user supplies a negative quantity', (done) => {
+    try {
+      buy(user, {
+        params: {
+          key: 'dilatoryDistress1',
+        },
+        type: 'quest',
+        quantity: -3,
+      });
+    } catch (err) {
+      expect(err).to.be.an.instanceof(BadRequest);
+      expect(err.message).to.equal(errorMessage('invalidQuantity'));
+      done();
+    }
+  });
+
+  it('errors if user supplies a decimal quantity', (done) => {
+    try {
+      buy(user, {
+        params: {
+          key: 'dilatoryDistress1',
+        },
+        type: 'quest',
+        quantity: 1.83,
+      });
+    } catch (err) {
+      expect(err).to.be.an.instanceof(BadRequest);
+      expect(err.message).to.equal(errorMessage('invalidQuantity'));
+      done();
+    }
   });
 });

@@ -1,8 +1,8 @@
 import {
   generateUser,
-  translate as t,
 } from '../../../../../helpers/api-integration/v3';
 import paypalPayments from '../../../../../../website/server/libs/payments/paypal';
+import apiError from '../../../../../../website/server/libs/apiError';
 
 describe('payments : paypal #checkoutSuccess', () => {
   let endpoint = '/paypal/checkout/success';
@@ -17,7 +17,7 @@ describe('payments : paypal #checkoutSuccess', () => {
       .to.eventually.be.rejected.and.eql({
         code: 400,
         error: 'BadRequest',
-        message: t('missingPaymentId'),
+        message: apiError('missingPaymentId'),
       });
   });
 
@@ -26,7 +26,7 @@ describe('payments : paypal #checkoutSuccess', () => {
       .to.eventually.be.rejected.and.eql({
         code: 400,
         error: 'BadRequest',
-        message: t('missingCustomerId'),
+        message: apiError('missingCustomerId'),
       });
   });
 
@@ -34,7 +34,7 @@ describe('payments : paypal #checkoutSuccess', () => {
     let checkoutSuccessStub;
 
     beforeEach(async () => {
-      checkoutSuccessStub = sinon.stub(paypalPayments, 'checkoutSuccess').returnsPromise().resolves({});
+      checkoutSuccessStub = sinon.stub(paypalPayments, 'checkoutSuccess').resolves({});
     });
 
     afterEach(() => {

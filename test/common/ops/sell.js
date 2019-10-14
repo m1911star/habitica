@@ -36,7 +36,7 @@ describe('shared.ops.sell', () => {
       sell(user, {params: { type } });
     } catch (err) {
       expect(err).to.be.an.instanceof(BadRequest);
-      expect(err.message).to.equal(i18n.t('keyRequired'));
+      expect(err.message).to.equal(i18n.t('missingKeyParam'));
       done();
     }
   });
@@ -81,6 +81,19 @@ describe('shared.ops.sell', () => {
     } catch (err) {
       expect(err).to.be.an.instanceof(BadRequest);
       expect(err.message).to.equal(i18n.t('positiveAmountRequired', {type}));
+      done();
+    }
+  });
+
+  it('returns error when trying to sell Saddle', (done) => {
+    const foodType = 'food';
+    const saddleKey = 'Saddle';
+    user.items[foodType][saddleKey] = 1;
+    try {
+      sell(user, {params: {type: foodType, key: saddleKey}});
+    } catch (err) {
+      expect(err).to.be.an.instanceof(NotAuthorized);
+      expect(err.message).to.equal(i18n.t('foodSaddleSellWarningNote'));
       done();
     }
   });

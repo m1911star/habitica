@@ -20,6 +20,8 @@ module.exports = function updateStats (user, stats, req = {}, analytics) {
   if (stats.exp >= experienceToNextLevel) {
     user.stats.exp = stats.exp;
 
+    const initialLvl = user.stats.lvl;
+
     while (stats.exp >= experienceToNextLevel) {
       stats.exp -= experienceToNextLevel;
       user.stats.lvl++;
@@ -47,6 +49,13 @@ module.exports = function updateStats (user, stats, req = {}, analytics) {
         }
       }
     }
+
+    const newLvl = user.stats.lvl;
+    if (!user._tmp.leveledUp) user._tmp.leveledUp = [];
+    user._tmp.leveledUp.push({
+      initialLvl,
+      newLvl,
+    });
   }
 
   user.stats.exp = stats.exp;
@@ -66,6 +75,8 @@ module.exports = function updateStats (user, stats, req = {}, analytics) {
     } else {
       user.items.eggs.Wolf = 1;
     }
+
+    if (user.markModified) user.markModified('items.eggs');
   }
   each({
     vice1: 30,
@@ -75,10 +86,12 @@ module.exports = function updateStats (user, stats, req = {}, analytics) {
   }, (lvl, k) => {
     if (user.stats.lvl >= lvl && !user.flags.levelDrops[k]) {
       user.flags.levelDrops[k] = true;
-      if (!user.items.quests[k])
-        user.items.quests[k] = 0;
-      user.items.quests[k]++;
       if (user.markModified) user.markModified('flags.levelDrops');
+
+      if (!user.items.quests[k]) user.items.quests[k] = 0;
+      user.items.quests[k]++;
+      if (user.markModified) user.markModified('items.quests');
+
       if (analytics) {
         analytics.track('acquire item', {
           uuid: user._id,

@@ -1,42 +1,51 @@
 <template lang="pug">
 div
   approval-modal(:task='task')
-  .claim-bottom-message.col-12
-    .task-unclaimed.d-flex.justify-content-between(v-if='!approvalRequested && !multipleApprovalsRequested')
-      span {{ message }}
-      a.text-right(@click='claim()', v-if='!userIsAssigned') {{ $t('claim') }}
-      a.text-right(@click='unassign()', v-if='userIsAssigned') {{ $t('removeClaim') }}
-    .row.task-single-approval(v-if='approvalRequested')
-      .col-6.text-center
-        a(@click='approve()') {{ $t('approveTask') }}
-      .col-6.text-center
-        a(@click='needsWork()') {{ $t('needsWork') }}
-    .text-center.task-multi-approval(v-if='multipleApprovalsRequested')
-      a(@click='showRequests()') {{ $t('viewRequests') }}
+  .claim-bottom-message.d-flex.align-items-center(v-if='!approvalRequested && !multipleApprovalsRequested')
+    .mr-auto.ml-2(v-html='message')
+    .ml-auto.mr-2(v-if='!userIsAssigned')
+      a(@click='claim()').claim-color {{ $t('claim') }}
+    .ml-auto.mr-2(v-if='userIsAssigned')
+      a(@click='unassign()').unclaim-color {{ $t('removeClaim') }}
+  .claim-bottom-message.d-flex.align-items-center.justify-content-around(v-if='approvalRequested && userIsManager')
+    a(@click='approve()').approve-color {{ $t('approveTask') }}
+    a(@click='needsWork()') {{ $t('needsWork') }}
+  .claim-bottom-message.d-flex.align-items-center(v-if='multipleApprovalsRequested && userIsManager')
+    a(@click='showRequests()') {{ $t('viewRequests') }}
 </template>
 
 <style lang="scss", scoped>
-.claim-bottom-message {
-  z-index: 9;
-}
-
-.task-unclaimed {
-  span {
-    margin-right: 0.25rem;
+  @import '~client/assets/scss/colors.scss';
+  .claim-bottom-message {
+    background-color: $gray-700;
+    border-bottom-left-radius: 2px;
+    border-bottom-right-radius: 2px;
+    color: $gray-200;
+    font-size: 12px;
+    padding-bottom: 0.25rem;
+    padding-top: 0.25rem;
+    z-index: 9;
   }
 
-  a {
-    display: inline-block;
+  .approve-color {
+    color: $green-10 !important;
   }
-}
+  .claim-color {
+    color: $blue-10 !important;
+  }
+  .unclaim-color {
+    color: $red-50 !important;
+  }
 </style>
 
 <script>
 import findIndex from 'lodash/findIndex';
 import { mapState } from 'client/libs/store';
 import approvalModal from './approvalModal';
+import sync from 'client/mixins/sync';
 
 export default {
+  mixins: [sync],
   props: ['task', 'group'],
   components: {
     approvalModal,
@@ -67,15 +76,18 @@ export default {
       } else if (assignedUsersLength > 1 && !this.userIsAssigned) {
         return this.$t('assignedToMembers', {userCount: assignedUsersLength});
       } else if (assignedUsersLength > 1 && this.userIsAssigned) {
-        return this.$t('assignedToYouAndMembers', {userCount: assignedUsersLength});
+        return this.$t('assignedToYouAndMembers', {userCount: assignedUsersLength - 1});
       } else if (this.userIsAssigned) {
         return this.$t('youAreAssigned');
       } else if (assignedUsersLength === 0) {
         return this.$t('taskIsUnassigned');
       }
     },
+    userIsManager () {
+      if (this.group && (this.group.leader.id === this.user._id || this.group.managers[this.user._id])) return true;
+    },
     approvalRequested () {
-      if (this.task.approvals && this.task.approvals.length === 1) return true;
+      if (this.task.approvals && this.task.approvals.length === 1 || this.task.group && this.task.group.approval && this.task.group.approval.requested) return true;
     },
     multipleApprovalsRequested () {
       if (this.task.approvals && this.task.approvals.length > 1) return true;
@@ -83,19 +95,18 @@ export default {
   },
   methods: {
     async claim () {
-      if (!confirm(this.$t('confirmClaim'))) return;
-
       let taskId = this.task._id;
       // If we are on the user task
       if (this.task.userId) {
         taskId = this.task.group.taskId;
       }
 
-      this.$store.dispatch('tasks:assignTask', {
+      await this.$store.dispatch('tasks:assignTask', {
         taskId,
         userId: this.user._id,
       });
       this.task.group.assignedUsers.push(this.user._id);
+      this.sync();
     },
     async unassign () {
       if (!confirm(this.$t('confirmUnClaim'))) return;
@@ -106,15 +117,16 @@ export default {
         taskId = this.task.group.taskId;
       }
 
-      this.$store.dispatch('tasks:unassignTask', {
+      await this.$store.dispatch('tasks:unassignTask', {
         taskId,
         userId: this.user._id,
       });
       let index = this.task.group.assignedUsers.indexOf(this.user._id);
       this.task.group.assignedUsers.splice(index, 1);
+
+      this.sync();
     },
     approve () {
-      if (!confirm(this.$t('confirmApproval'))) return;
       let userIdToApprove = this.task.group.assignedUsers[0];
       this.$store.dispatch('tasks:approve', {
         taskId: this.task._id,

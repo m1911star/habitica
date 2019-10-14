@@ -5,6 +5,7 @@ import {
 } from '../../libs/webhook';
 import { removeFromArray } from '../../libs/collectionManipulators';
 import * as Tasks from '../../models/task';
+import { handleSharedCompletion } from '../../libs/groupTasks';
 import { model as Challenge } from '../../models/challenge';
 import { model as Group } from '../../models/group';
 import { model as User } from '../../models/user';
@@ -23,8 +24,7 @@ import common from '../../../common';
 import _ from 'lodash';
 import logger from '../../libs/logger';
 import moment from 'moment';
-
-const MAX_SCORE_NOTES_LENGTH = 256;
+import apiError from '../../libs/apiError';
 
 function canNotEditTasks (group, user, assignedUserId) {
   let isNotGroupLeader = group.leader !== user._id;
@@ -173,10 +173,11 @@ api.createUserTasks = {
           hitType: 'event',
           category: 'behavior',
           taskType: task.type,
+          headers: req.headers,
         });
       }
 
-      taskActivityWebhook.send(user.webhooks, {
+      taskActivityWebhook.send(user, {
         type: 'created',
         task,
       });
@@ -243,7 +244,7 @@ api.createChallengeTasks = {
 
     // If the challenge does not exist, or if it exists but user is not the leader -> throw error
     if (!challenge) throw new NotFound(res.t('challengeNotFound'));
-    if (challenge.leader !== user._id) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
+    if (!challenge.canModify(user)) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
 
     let tasks = await createTasks(req, res, {user, challenge});
 
@@ -270,6 +271,7 @@ api.createChallengeTasks = {
  * @apiGroup Task
  *
  * @apiParam (Query) {String="habits","dailys","todos","rewards","completedTodos"} type Optional query parameter to return just a type of tasks. By default all types will be returned except completed todos that must be requested separately. The "completedTodos" type returns only the 30 most recently completed.
+ * @apiParam (Query) [dueDate] type Optional date to use for computing the nextDue field for each returned task.
  *
  * @apiSuccess {Array} data An array of tasks
  *
@@ -282,7 +284,10 @@ api.createChallengeTasks = {
 api.getUserTasks = {
   method: 'GET',
   url: '/tasks/user',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders({
+    // Some fields (including _id, preferences) are always loaded (see middlewares/auth)
+    userFieldsToInclude: ['tasksOrder'],
+  })],
   async handler (req, res) {
     let types = Tasks.tasksTypes.map(type => `${type}s`);
     types.push('completedTodos', '_allCompletedTodos'); // _allCompletedTodos is currently in BETA and is likely to be removed in future
@@ -291,10 +296,10 @@ api.getUserTasks = {
     let validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
 
-    let user = res.locals.user;
-    let dueDate = req.query.dueDate;
+    const user = res.locals.user;
+    const dueDate = req.query.dueDate;
 
-    let tasks = await getTasks(req, res, {user, dueDate});
+    const tasks = await getTasks(req, res, { user, dueDate });
     return res.respond(200, tasks);
   },
 };
@@ -429,7 +434,7 @@ api.updateTask = {
     let user = res.locals.user;
     let challenge;
 
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty();
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty();
 
     let validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
@@ -449,7 +454,7 @@ api.updateTask = {
     } else if (task.challenge.id && !task.userId) { // If the task belongs to a challenge make sure the user has rights
       challenge = await Challenge.findOne({_id: task.challenge.id}).exec();
       if (!challenge) throw new NotFound(res.t('challengeNotFound'));
-      if (challenge.leader !== user._id) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
+      if (!challenge.canModify(user)) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
     } else if (task.userId !== user._id) { // If the task is owned by a user make it's the current one
       throw new NotFound(res.t('taskNotFound'));
     }
@@ -478,6 +483,9 @@ api.updateTask = {
     if (sanitizedObj.requiresApproval) {
       task.group.approval.required = true;
     }
+    if (sanitizedObj.sharedCompletion) {
+      task.group.sharedCompletion = sanitizedObj.sharedCompletion;
+    }
 
     setNextDue(task, user);
     let savedTask = await task.save();
@@ -501,7 +509,7 @@ api.updateTask = {
     } else if (group && task.group.id && task.group.assignedUsers.length > 0) {
       await group.updateTask(savedTask);
     } else {
-      taskActivityWebhook.send(user.webhooks, {
+      taskActivityWebhook.send(user, {
         type: 'updated',
         task: savedTask,
       });
@@ -516,7 +524,6 @@ api.updateTask = {
  *
  * @apiParam (Path) {String} taskId The task _id or alias
  * @apiParam (Path) {String="up","down"} direction The direction for scoring the task
- * @apiParam (Body) {String} scoreNotes Notes explaining the scoring
  *
  * @apiExample {json} Example call:
  * curl -X "POST" https://habitica.com/api/v3/tasks/test-api-params/score/up
@@ -540,18 +547,14 @@ api.scoreTask = {
   async handler (req, res) {
     req.checkParams('direction', res.t('directionUpDown')).notEmpty().isIn(['up', 'down']);
 
-    let validationErrors = req.validationErrors();
+    const validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
 
-    let user = res.locals.user;
-    let scoreNotes = req.body.scoreNotes;
-    if (scoreNotes && scoreNotes.length > MAX_SCORE_NOTES_LENGTH) throw new NotAuthorized(res.t('taskScoreNotesTooLong'));
-    let {taskId} = req.params;
+    const user = res.locals.user;
+    const {taskId} = req.params;
 
-    let task = await Tasks.Task.findByIdOrAlias(taskId, user._id, {userId: user._id});
-    let direction = req.params.direction;
-
-    if (scoreNotes) task.scoreNotes = scoreNotes;
+    const task = await Tasks.Task.findByIdOrAlias(taskId, user._id, {userId: user._id});
+    const direction = req.params.direction;
 
     if (!task) throw new NotFound(res.t('taskNotFound'));
 
@@ -564,41 +567,48 @@ api.scoreTask = {
     }
 
     if (task.group.approval.required && !task.group.approval.approved) {
-      if (task.group.approval.requested) {
-        throw new NotAuthorized(res.t('taskRequiresApproval'));
-      }
-
-      task.group.approval.requested = true;
-      task.group.approval.requestedDate = new Date();
-
       let fields = requiredGroupFields.concat(' managers');
       let group = await Group.getGroup({user, groupId: task.group.id, fields});
 
-      // @TODO: we can use the User.pushNotification function because we need to ensure notifications are translated
       let managerIds = Object.keys(group.managers);
       managerIds.push(group.leader);
-      let managers = await User.find({_id: managerIds}, 'notifications preferences').exec(); // Use this method so we can get access to notifications
 
-      let managerPromises = [];
-      managers.forEach((manager) => {
-        manager.addNotification('GROUP_TASK_APPROVAL', {
-          message: res.t('userHasRequestedTaskApproval', {
-            user: user.profile.name,
-            taskName: task.text,
-          }, manager.preferences.language),
-          groupId: group._id,
-          taskId: task._id, // user task id, used to match the notification when the task is approved
-          userId: user._id,
-          groupTaskId: task.group.id, // the original task id
-          direction,
+      if (managerIds.indexOf(user._id) !== -1) {
+        task.group.approval.approved = true;
+        task.group.approval.requested = true;
+        task.group.approval.requestedDate = new Date();
+      } else {
+        if (task.group.approval.requested) {
+          throw new NotAuthorized(res.t('taskRequiresApproval'));
+        }
+
+        task.group.approval.requested = true;
+        task.group.approval.requestedDate = new Date();
+
+        let managers = await User.find({_id: managerIds}, 'notifications preferences').exec(); // Use this method so we can get access to notifications
+
+        // @TODO: we can use the User.pushNotification function because we need to ensure notifications are translated
+        let managerPromises = [];
+        managers.forEach((manager) => {
+          manager.addNotification('GROUP_TASK_APPROVAL', {
+            message: res.t('userHasRequestedTaskApproval', {
+              user: user.profile.name,
+              taskName: task.text,
+            }, manager.preferences.language),
+            groupId: group._id,
+            taskId: task._id, // user task id, used to match the notification when the task is approved
+            userId: user._id,
+            groupTaskId: task.group.taskId, // the original task id
+            direction,
+          });
+          managerPromises.push(manager.save());
         });
-        managerPromises.push(manager.save());
-      });
 
-      managerPromises.push(task.save());
-      await Promise.all(managerPromises);
+        managerPromises.push(task.save());
+        await Promise.all(managerPromises);
 
-      throw new NotAuthorized(res.t('taskApprovalHasBeenRequested'));
+        throw new NotAuthorized(res.t('taskApprovalHasBeenRequested'));
+      }
     }
 
     let wasCompleted = task.completed;
@@ -628,22 +638,28 @@ api.scoreTask = {
 
     setNextDue(task, user);
 
-    if (user._ABtests && user._ABtests.guildReminder && user._ABtests.counter !== -1) {
-      user._ABtests.counter++;
-      if (user._ABtests.counter > 1) {
-        if (user._ABtests.guildReminder.indexOf('timing1') !== -1 || user._ABtests.counter > 4) {
-          user._ABtests.counter = -1;
-          let textVariant = user._ABtests.guildReminder.indexOf('text2');
-          user.addNotification('GUILD_PROMPT', {textVariant});
-        }
-      }
-      user.markModified('_ABtests');
-    }
-
     let promises = [
       user.save(),
       task.save(),
     ];
+
+    if (task.group && task.group.taskId) {
+      await handleSharedCompletion(task);
+      try {
+        const groupTask = await Tasks.Task.findOne({
+          _id: task.group.taskId,
+        }).exec();
+
+        if (groupTask) {
+          const groupDelta = groupTask.group.assignedUsers ? delta / groupTask.group.assignedUsers.length : delta;
+          await groupTask.scoreChallengeTask(groupDelta, direction);
+        }
+      } catch (e) {
+        logger.error(e);
+      }
+    }
+
+    // Save results and handle request
     if (taskOrderPromise) promises.push(taskOrderPromise);
     let results = await Promise.all(promises);
 
@@ -653,7 +669,7 @@ api.scoreTask = {
     let resJsonData = _.assign({delta, _tmp: user._tmp}, userStats);
     res.respond(200, resJsonData);
 
-    taskScoredWebhook.send(user.webhooks, {
+    taskScoredWebhook.send(user, {
       task,
       direction,
       delta,
@@ -663,13 +679,13 @@ api.scoreTask = {
     if (task.challenge && task.challenge.id && task.challenge.taskId && !task.challenge.broken && task.type !== 'reward') {
       // Wrapping everything in a try/catch block because if an error occurs using `await` it MUST NOT bubble up because the request has already been handled
       try {
-        let chalTask = await Tasks.Task.findOne({
+        const chalTask = await Tasks.Task.findOne({
           _id: task.challenge.taskId,
         }).exec();
 
         if (!chalTask) return;
 
-        await chalTask.scoreChallengeTask(delta);
+        await chalTask.scoreChallengeTask(delta, direction);
       } catch (e) {
         logger.error(e);
       }
@@ -683,6 +699,7 @@ api.scoreTask = {
         category: 'behavior',
         taskType: task.type,
         direction,
+        headers: req.headers,
       });
     }
   },
@@ -709,7 +726,7 @@ api.moveTask = {
   url: '/tasks/:taskId/move/to/:position',
   middlewares: [authWithHeaders()],
   async handler (req, res) {
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty();
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty();
     req.checkParams('position', res.t('positionRequired')).notEmpty().isNumeric();
 
     let validationErrors = req.validationErrors();
@@ -782,7 +799,7 @@ api.addChecklistItem = {
     let challenge;
     let group;
 
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty();
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty();
 
     let validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
@@ -799,7 +816,7 @@ api.addChecklistItem = {
     } else if (task.challenge.id && !task.userId) { // If the task belongs to a challenge make sure the user has rights
       challenge = await Challenge.findOne({_id: task.challenge.id}).exec();
       if (!challenge) throw new NotFound(res.t('challengeNotFound'));
-      if (challenge.leader !== user._id) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
+      if (!challenge.canModify(user)) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
     } else if (task.userId !== user._id) { // If the task is owned by a user make it's the current one
       throw new NotFound(res.t('taskNotFound'));
     }
@@ -840,7 +857,7 @@ api.scoreCheckListItem = {
   async handler (req, res) {
     let user = res.locals.user;
 
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty();
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty();
     req.checkParams('itemId', res.t('itemIdRequired')).notEmpty().isUUID();
 
     let validationErrors = req.validationErrors();
@@ -859,6 +876,12 @@ api.scoreCheckListItem = {
     let savedTask = await task.save();
 
     res.respond(200, savedTask);
+
+    taskActivityWebhook.send(user, {
+      type: 'checklistScored',
+      task: savedTask,
+      item,
+    });
   },
 };
 
@@ -890,7 +913,7 @@ api.updateChecklistItem = {
     let challenge;
     let group;
 
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty();
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty();
     req.checkParams('itemId', res.t('itemIdRequired')).notEmpty().isUUID();
 
     let validationErrors = req.validationErrors();
@@ -909,7 +932,7 @@ api.updateChecklistItem = {
     } else if (task.challenge.id && !task.userId) { // If the task belongs to a challenge make sure the user has rights
       challenge = await Challenge.findOne({_id: task.challenge.id}).exec();
       if (!challenge) throw new NotFound(res.t('challengeNotFound'));
-      if (challenge.leader !== user._id) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
+      if (!challenge.canModify(user)) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
     } else if (task.userId !== user._id) { // If the task is owned by a user make it's the current one
       throw new NotFound(res.t('taskNotFound'));
     }
@@ -955,7 +978,7 @@ api.removeChecklistItem = {
     let challenge;
     let group;
 
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty();
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty();
     req.checkParams('itemId', res.t('itemIdRequired')).notEmpty().isUUID();
 
     let validationErrors = req.validationErrors();
@@ -974,7 +997,7 @@ api.removeChecklistItem = {
     } else if (task.challenge.id && !task.userId) { // If the task belongs to a challenge make sure the user has rights
       challenge = await Challenge.findOne({_id: task.challenge.id}).exec();
       if (!challenge) throw new NotFound(res.t('challengeNotFound'));
-      if (challenge.leader !== user._id) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
+      if (!challenge.canModify(user)) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
     } else if (task.userId !== user._id) { // If the task is owned by a user make it's the current one
       throw new NotFound(res.t('taskNotFound'));
     }
@@ -1016,7 +1039,7 @@ api.addTagToTask = {
   async handler (req, res) {
     let user = res.locals.user;
 
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty();
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty();
     let userTags = user.tags.map(tag => tag.id);
     req.checkParams('tagId', res.t('tagIdRequired')).notEmpty().isUUID().isIn(userTags);
 
@@ -1065,7 +1088,7 @@ api.removeTagFromTask = {
   async handler (req, res) {
     let user = res.locals.user;
 
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty();
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty();
     req.checkParams('tagId', res.t('tagIdRequired')).notEmpty().isUUID();
 
     let validationErrors = req.validationErrors();
@@ -1109,7 +1132,7 @@ api.unlinkAllTasks = {
   middlewares: [authWithHeaders()],
   async handler (req, res) {
     req.checkParams('challengeId', res.t('challengeIdRequired')).notEmpty().isUUID();
-    req.checkQuery('keep', res.t('keepOrRemoveAll')).notEmpty().isIn(['keep-all', 'remove-all']);
+    req.checkQuery('keep', apiError('keepOrRemoveAll')).notEmpty().isIn(['keep-all', 'remove-all']);
 
     let validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
@@ -1175,8 +1198,8 @@ api.unlinkOneTask = {
   url: '/tasks/unlink-one/:taskId',
   middlewares: [authWithHeaders()],
   async handler (req, res) {
-    req.checkParams('taskId', res.t('taskIdRequired')).notEmpty().isUUID();
-    req.checkQuery('keep', res.t('keepOrRemove')).notEmpty().isIn(['keep', 'remove']);
+    req.checkParams('taskId', apiError('taskIdRequired')).notEmpty().isUUID();
+    req.checkQuery('keep', apiError('keepOrRemove')).notEmpty().isIn(['keep', 'remove']);
 
     let validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
@@ -1294,7 +1317,7 @@ api.deleteTask = {
     } else if (task.challenge.id && !task.userId) { // If the task belongs to a challenge make sure the user has rights
       challenge = await Challenge.findOne({_id: task.challenge.id}).exec();
       if (!challenge) throw new NotFound(res.t('challengeNotFound'));
-      if (challenge.leader !== user._id) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
+      if (!challenge.canModify(user)) throw new NotAuthorized(res.t('onlyChalLeaderEditTasks'));
     } else if (task.userId !== user._id) { // If the task is owned by a user make it's the current one
       throw new NotFound(res.t('taskNotFound'));
     } else if (task.userId && task.challenge.id && !task.challenge.broken) {
@@ -1325,7 +1348,7 @@ api.deleteTask = {
     if (challenge) {
       challenge.removeTask(task);
     } else {
-      taskActivityWebhook.send(user.webhooks, {
+      taskActivityWebhook.send(user, {
         type: 'deleted',
         task,
       });

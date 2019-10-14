@@ -31,7 +31,7 @@ let api = {};
  * @apiParam (Body) {String} url The webhook's URL
  * @apiParam (Body) {String} [label] A label to remind you what this webhook does
  * @apiParam (Body) {Boolean} [enabled=true] If the webhook should be enabled
- * @apiParam (Body) {Sring="taskActivity","groupChatReceived"} [type="taskActivity"] The webhook's type.
+ * @apiParam (Body) {String="taskActivity","groupChatReceived","userActivity"} [type="taskActivity"] The webhook's type.
  * @apiParam (Body) {Object} [options] The webhook's options. Wil differ depending on type. Required for `groupChatReceived` type. If a webhook supports options, the default values are displayed in the examples below
  * @apiParamExample {json} Task Activity Example
  *   {
@@ -73,9 +73,7 @@ let api = {};
  */
 api.addWebhook = {
   method: 'POST',
-  middlewares: [authWithHeaders({
-    userFieldsToExclude: ['inbox'],
-  })],
+  middlewares: [authWithHeaders()],
   url: '/user/webhook',
   async handler (req, res) {
     let user = res.locals.user;
@@ -98,6 +96,24 @@ api.addWebhook = {
 };
 
 /**
+ * @api {get} /api/v3/user/webhook Get webhooks
+ * @apiName UserGetWebhook
+ * @apiGroup Webhook
+ *
+ * @apiSuccess {Array} data User's webhooks
+ */
+api.getWebhook = {
+  method: 'GET',
+  middlewares: [authWithHeaders()],
+  url: '/user/webhook',
+  async handler (req, res) {
+    const user = res.locals.user;
+
+    res.respond(200, user.webhooks);
+  },
+};
+
+/**
  * @api {put} /api/v3/user/webhook/:id Edit a webhook - BETA
  * @apiName UserUpdateWebhook
  * @apiGroup Webhook
@@ -107,7 +123,7 @@ api.addWebhook = {
  * @apiParam (Body) {String} [url] The webhook's URL
  * @apiParam (Body) {String} [label] A label to remind you what this webhook does
  * @apiParam (Body) {Boolean} [enabled] If the webhook should be enabled
- * @apiParam (Body) {Sring="taskActivity","groupChatReceived"} [type] The webhook's type.
+ * @apiParam (Body) {String="taskActivity","groupChatReceived"} [type] The webhook's type.
  * @apiParam (Body) {Object} [options] The webhook's options. Wil differ depending on type. The options are enumerated in the [add webhook examples](#api-Webhook-UserAddWebhook).
  * @apiParamExample {json} Update Enabled and Type Properties
  *   {
@@ -135,9 +151,7 @@ api.addWebhook = {
  */
 api.updateWebhook = {
   method: 'PUT',
-  middlewares: [authWithHeaders({
-    userFieldsToExclude: ['inbox'],
-  })],
+  middlewares: [authWithHeaders()],
   url: '/user/webhook/:id',
   async handler (req, res) {
     let user = res.locals.user;
@@ -188,9 +202,7 @@ api.updateWebhook = {
 */
 api.deleteWebhook = {
   method: 'DELETE',
-  middlewares: [authWithHeaders({
-    userFieldsToExclude: ['inbox'],
-  })],
+  middlewares: [authWithHeaders()],
   url: '/user/webhook/:id',
   async handler (req, res) {
     let user = res.locals.user;

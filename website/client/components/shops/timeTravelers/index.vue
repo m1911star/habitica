@@ -22,7 +22,7 @@
           )
     .standard-page
       div.featuredItems
-        .background
+        .background(:class="{'background-closed': closed, 'background-open': !closed }")
           div.npc(:class="{'closed': closed }")
             div.featured-label
               span.rectangle
@@ -33,8 +33,6 @@
               span.rectangle
               span.text(v-once) {{ $t('timeTravelersPopoverNoSubMobile') }}
               span.rectangle
-
-      h1.mb-4.page-header(v-once) {{ $t('timeTravelers') }}
 
       .clearfix(v-if="!closed")
         div.float-right
@@ -50,7 +48,7 @@
 
       div(
         v-for="category in categories",
-        v-if="!closed && viewOptions[category.identifier].selected",
+        v-if="!anyFilterSelected  || (!closed && viewOptions[category.identifier].selected)",
         :class="category.identifier"
       )
         h2.mb-3 {{ category.text }}
@@ -70,9 +68,13 @@
               :emptyItem="false",
               @click="selectItemToBuy(ctx.item)"
             )
-              span(slot="popoverContent", slot-scope="ctx")
+              span(slot="popoverContent", slot-scope="ctx", v-if="category !== 'quests'")
                 div
                   h4.popover-content-title {{ ctx.item.text }}
+              span(slot="popoverContent", slot-scope="ctx", v-if="category === 'quests'")
+                div.questPopover
+                  h4.popover-content-title {{ item.text }}
+                  questInfo(:quest="item")
 
               template(slot="itemBadge", slot-scope="ctx")
                 span.badge.badge-pill.badge-item.badge-svg(
@@ -81,6 +83,18 @@
                   @click.prevent.stop="togglePinned(ctx.item)"
                 )
                   span.svg-icon.inline.icon-12.color(v-html="icons.pin")
+    buyQuestModal(
+      :item="selectedItemToBuy || {}",
+      :priceType="selectedItemToBuy ? selectedItemToBuy.currency : ''",
+      :withPin="true",
+      @change="resetItemToBuy($event)",
+    )
+      template(slot="item", slot-scope="ctx")
+        item.flat(
+          :item="ctx.item",
+          :itemContentClass="ctx.item.class",
+          :showPopover="false"
+        )
 </template>
 
 <style lang="scss">
@@ -164,12 +178,9 @@
       height: 216px;
 
       .background {
-        background: url('~assets/images/npc/#{$npc_timetravelers_flavor}/time_travelers_background.png');
-
         background-repeat: repeat-x;
 
         width: 100%;
-        height: 216px;
         position: absolute;
 
         top: 0;
@@ -179,6 +190,14 @@
         flex-direction: column;
         justify-content: center;
         align-items: center;
+      }
+      .background-open {
+        background: url('~assets/images/npc/#{$npc_timetravelers_flavor}/time_travelers_background.png');
+        height: 188px;
+      }
+      .background-closed {
+        background: url('~assets/images/npc/normal/time_travelers_background.png');
+        height: 216px;
       }
 
       .content {
@@ -222,8 +241,10 @@
   import ItemRows from 'client/components/ui/itemRows';
   import toggleSwitch from 'client/components/ui/toggleSwitch';
   import Avatar from 'client/components/avatar';
+  import QuestInfo from '../quests/questInfo.vue';
 
   import BuyModal from '../buyModal.vue';
+  import BuyQuestModal from '../quests/buyQuestModal.vue';
 
   import svgPin from 'assets/svg/pin.svg';
   import svgHourglass from 'assets/svg/hourglass.svg';
@@ -237,17 +258,21 @@
   import isPinned from 'common/script/libs/isPinned';
   import shops from 'common/script/libs/shops';
 
+  import pinUtils from 'client/mixins/pinUtils';
 
   export default {
+    mixins: [pinUtils],
     components: {
       ShopItem,
       Item,
       CountBadge,
       ItemRows,
       toggleSwitch,
+      QuestInfo,
 
       Avatar,
       BuyModal,
+      BuyQuestModal,
     },
     watch: {
       searchText: _throttle(function throttleSearch () {
@@ -268,6 +293,8 @@
 
         sortItemsBy: ['AZ', 'sortByNumber'],
         selectedSortItemsBy: 'AZ',
+
+        selectedItemToBuy: null,
 
         hidePinned: false,
 
@@ -298,11 +325,11 @@
         let backgroundUpdate = this.backgroundUpdate; // eslint-disable-line
 
         let normalGroups = _filter(apiCategories, (c) => {
-          return c.identifier === 'mounts' || c.identifier === 'pets';
+          return c.identifier === 'mounts' || c.identifier === 'pets' || c.identifier === 'quests';
         });
 
         let setGroups = _filter(apiCategories, (c) => {
-          return c.identifier !== 'mounts' && c.identifier !== 'pets';
+          return c.identifier !== 'mounts' && c.identifier !== 'pets' && c.identifier !== 'quests';
         });
 
         let setCategory = {
@@ -324,11 +351,14 @@
 
         normalGroups.map((category) => {
           this.$set(this.viewOptions, category.identifier, {
-            selected: true,
+            selected: false,
           });
         });
 
         return normalGroups;
+      },
+      anyFilterSelected () {
+        return Object.values(this.viewOptions).some(g => g.selected);
       },
     },
     methods: {
@@ -366,13 +396,19 @@
       getGrouped (entries) {
         return _groupBy(entries, 'group');
       },
-      togglePinned (item) {
-        if (!this.$store.dispatch('user:togglePinnedItem', {type: item.pinType, path: item.path})) {
-          this.$parent.showUnpinNotification(item);
+      selectItemToBuy (item) {
+        if (item.purchaseType === 'quests') {
+          this.selectedItemToBuy = item;
+
+          this.$root.$emit('bv::show::modal', 'buy-quest-modal');
+        } else {
+          this.$root.$emit('buyModal::showItem', item);
         }
       },
-      selectItemToBuy (item) {
-        this.$root.$emit('buyModal::showItem', item);
+      resetItemToBuy ($event) {
+        if (!$event) {
+          this.selectedItemToBuy = null;
+        }
       },
     },
     created () {

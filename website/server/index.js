@@ -10,9 +10,10 @@ if (process.env.NODE_ENV !== 'production') {
 // Initialize configuration BEFORE anything
 const setupNconf = require('./libs/setupNconf');
 setupNconf();
-
 const nconf = require('nconf');
-const stackimpact = require('stackimpact');
+
+// Initialize @google-cloud/trace-agent
+require('./libs/gcpTraceAgent');
 
 const cluster = require('cluster');
 const logger = require('./libs/logger');
@@ -20,13 +21,6 @@ const logger = require('./libs/logger');
 const IS_PROD = nconf.get('IS_PROD');
 const IS_DEV = nconf.get('IS_DEV');
 const CORES = Number(nconf.get('WEB_CONCURRENCY')) || 0;
-
-if (IS_PROD) {
-  stackimpact.start({
-    agentKey: nconf.get('STACK_IMPACT_KEY'),
-    appName: 'Habitica',
-  });
-}
 
 // Setup the cluster module
 if (CORES !== 0 && cluster.isMaster && (IS_DEV || IS_PROD)) {

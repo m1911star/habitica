@@ -1,7 +1,7 @@
 import {
   generateUser,
   translate as t,
-} from '../../../../helpers/api-v3-integration.helper';
+} from '../../../../helpers/api-integration/v3';
 import { v4 as generateUUID } from 'uuid';
 
 describe('PUT /heroes/:heroId', () => {
@@ -105,14 +105,20 @@ describe('PUT /heroes/:heroId', () => {
 
   it('updates chatRevoked flag', async () => {
     let hero = await generateUser();
-
     await user.put(`/hall/heroes/${hero._id}`, {
       flags: {chatRevoked: true},
     });
-
     await hero.sync();
-
     expect(hero.flags.chatRevoked).to.eql(true);
+  });
+
+  it('updates chatShadowMuted flag', async () => {
+    let hero = await generateUser();
+    await user.put(`/hall/heroes/${hero._id}`, {
+      flags: {chatShadowMuted: true},
+    });
+    await hero.sync();
+    expect(hero.flags.chatShadowMuted).to.eql(true);
   });
 
   it('updates contributor level', async () => {

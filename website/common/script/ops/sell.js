@@ -26,7 +26,7 @@ module.exports = function sell (user, req = {}) {
   }
 
   if (!key) {
-    throw new BadRequest(i18n.t('keyRequired', req.language));
+    throw new BadRequest(i18n.t('missingKeyParam', req.language));
   }
 
   if (ACCEPTEDTYPES.indexOf(type) === -1) {
@@ -43,7 +43,13 @@ module.exports = function sell (user, req = {}) {
     throw new NotFound(i18n.t('userItemsNotEnough', {type}, req.language));
   }
 
+  if (type === 'food' && key === 'Saddle') {
+    throw new NotAuthorized(content[type][key].sellWarningNote(req.language));
+  }
+
   user.items[type][key] -= amount;
+  if (user.markModified) user.markModified(`items.${type}`);
+
   user.stats.gp += content[type][key].value * amount;
 
   return [

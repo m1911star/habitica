@@ -16,9 +16,41 @@ let momentLangsMapping = {
   en_GB: 'en-gb', // eslint-disable-line camelcase
   no: 'nn',
   zh: 'zh-cn',
+  zh_TW: 'zh-tw', // eslint-disable-line camelcase
   es_419: 'es', // eslint-disable-line camelcase
   pt_BR: 'pt-br', // eslint-disable-line camelcase
 };
+
+export let approvedLanguages = [
+  'bg',
+  'cs',
+  'da',
+  'de',
+  'en',
+  'en_GB',
+  'en@pirate',
+  'es',
+  'es_419',
+  'fr',
+  'he',
+  'hu',
+  'id',
+  'it',
+  'ja',
+  'nl',
+  'pl',
+  'pt',
+  'pt_BR',
+  'ro',
+  'ru',
+  'sk',
+  'sr',
+  'sv',
+  'tr',
+  'uk',
+  'zh',
+  'zh_TW',
+];
 
 function _loadTranslations (locale) {
   let files = fs.readdirSync(path.join(localePath, locale));
@@ -37,7 +69,7 @@ function _loadTranslations (locale) {
 _loadTranslations('en');
 
 // Then load all other languages
-fs.readdirSync(localePath).forEach((file) => {
+approvedLanguages.forEach((file) => {
   if (file === 'en' || fs.statSync(path.join(localePath, file)).isDirectory() === false) return;
   _loadTranslations(file);
 

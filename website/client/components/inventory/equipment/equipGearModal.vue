@@ -28,6 +28,7 @@
           span.className.textCondensed(:class="itemClass") {{ getClassName(itemClass) }}
 
         attributesGrid.attributesGrid(
+          :user="user",
           :item="item",
           v-if="attributesGridVisible"
         )
@@ -104,7 +105,7 @@
       margin: 0 auto;
 
       .character-sprites span {
-        left: 25px;
+        left: 24px;
       }
     }
 

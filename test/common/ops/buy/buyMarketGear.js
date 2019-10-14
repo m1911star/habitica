@@ -10,6 +10,8 @@ import {
   BadRequest, NotAuthorized, NotFound,
 } from '../../../../website/common/script/libs/errors';
 import i18n from '../../../../website/common/script/i18n';
+import errorMessage from '../../../../website/common/script/libs/errorMessage';
+import { defaultsDeep } from 'lodash';
 
 function buyGear (user, req, analytics) {
   let buyOp = new BuyMarketGearOperation(user, req, analytics);
@@ -23,6 +25,10 @@ describe('shared.ops.buyMarketGear', () => {
 
   beforeEach(() => {
     user = generateUser({
+      stats: { gp: 200 },
+    });
+
+    defaultsDeep(user, {
       items: {
         gear: {
           owned: {
@@ -33,7 +39,6 @@ describe('shared.ops.buyMarketGear', () => {
           },
         },
       },
-      stats: { gp: 200 },
     });
 
     sinon.stub(shared, 'randomVal');
@@ -63,6 +68,20 @@ describe('shared.ops.buyMarketGear', () => {
         eyewear_special_redTopFrame: true,
         eyewear_special_whiteTopFrame: true,
         eyewear_special_yellowTopFrame: true,
+        headAccessory_special_blackHeadband: true,
+        headAccessory_special_blueHeadband: true,
+        headAccessory_special_greenHeadband: true,
+        headAccessory_special_pinkHeadband: true,
+        headAccessory_special_redHeadband: true,
+        headAccessory_special_whiteHeadband: true,
+        headAccessory_special_yellowHeadband: true,
+        eyewear_special_blackHalfMoon: true,
+        eyewear_special_blueHalfMoon: true,
+        eyewear_special_greenHalfMoon: true,
+        eyewear_special_pinkHalfMoon: true,
+        eyewear_special_redHalfMoon: true,
+        eyewear_special_whiteHalfMoon: true,
+        eyewear_special_yellowHalfMoon: true,
       });
       expect(analytics.track).to.be.calledOnce;
     });
@@ -190,7 +209,7 @@ describe('shared.ops.buyMarketGear', () => {
         buyGear(user);
       } catch (err) {
         expect(err).to.be.an.instanceof(BadRequest);
-        expect(err.message).to.equal(i18n.t('missingKeyParam'));
+        expect(err.message).to.equal(errorMessage('missingKeyParam'));
         done();
       }
     });
@@ -202,7 +221,7 @@ describe('shared.ops.buyMarketGear', () => {
         buyGear(user, {params});
       } catch (err) {
         expect(err).to.be.an.instanceof(NotFound);
-        expect(err.message).to.equal(i18n.t('itemNotFound', params));
+        expect(err.message).to.equal(errorMessage('itemNotFound', params));
         done();
       }
     });
@@ -237,6 +256,15 @@ describe('shared.ops.buyMarketGear', () => {
       buyGear(user, {params: {key: 'head_special_2'}});
 
       expect(user.items.gear.owned).to.have.property('head_special_2', true);
+    });
+
+    it('does buyGear equipment if it is an armoire item that an user previously lost', () => {
+      user.stats.gp = 200;
+      user.items.gear.owned.shield_armoire_ramHornShield = false;
+
+      buyGear(user, {params: {key: 'shield_armoire_ramHornShield'}});
+
+      expect(user.items.gear.owned).to.have.property('shield_armoire_ramHornShield', true);
     });
   });
 });

@@ -3,7 +3,7 @@ import {
   generateChallenge,
   createAndPopulateGroup,
   translate as t,
-} from '../../../../helpers/api-v3-integration.helper';
+} from '../../../../helpers/api-integration/v3';
 
 describe('PUT /challenges/:challengeId', () => {
   let privateGuild, user, nonMember, challenge, member;
@@ -25,6 +25,7 @@ describe('PUT /challenges/:challengeId', () => {
     member = members[0];
 
     challenge = await generateChallenge(user, group);
+    await user.post(`/challenges/${challenge._id}/join`);
     await member.post(`/challenges/${challenge._id}/join`);
   });
 
@@ -55,11 +56,11 @@ describe('PUT /challenges/:challengeId', () => {
       tasksOrder: 'new order',
       official: true,
       shortName: 'new short name',
+      leader: member._id,
 
       // applied
       name: 'New Challenge Name',
       description: 'New challenge description.',
-      leader: member._id,
     });
 
     expect(res.prize).to.equal(0);
@@ -75,9 +76,17 @@ describe('PUT /challenges/:challengeId', () => {
     expect(res.shortName).not.to.equal('new short name');
 
     expect(res.leader).to.eql({
-      _id: member._id,
-      id: member._id,
-      profile: {name: member.profile.name},
+      _id: user._id,
+      id: user._id,
+      profile: {name: user.profile.name},
+      auth: {
+        local: {
+          username: user.auth.local.username,
+        },
+      },
+      flags: {
+        verifiedUsername: true,
+      },
     });
     expect(res.name).to.equal('New Challenge Name');
     expect(res.description).to.equal('New challenge description.');

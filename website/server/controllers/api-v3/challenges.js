@@ -27,6 +27,7 @@ import {
   createChallenge,
   cleanUpTask,
 } from '../../libs/challenges';
+import apiError from '../../libs/apiError';
 
 let api = {};
 
@@ -48,7 +49,7 @@ let api = {};
  * @apiSuccess {String} challenge.name Full name of challenge.
  * @apiSuccess {String} challenge.shortName A shortened name for the challenge, to be used as a tag.
  * @apiSuccess {Object} challenge.leader User details of challenge leader.
- * @apiSuccess {UUID} challenge.leader._id User id of challenge leader.
+ * @apiSuccess {UUID} challenge.leader._id User ID of challenge leader.
  * @apiSuccess {Object} challenge.leader.profile Profile information of leader.
  * @apiSuccess {Object} challenge.leader.profile.name Display Name of leader.
  * @apiSuccess {String} challenge.updatedAt Timestamp of last update.
@@ -68,7 +69,7 @@ let api = {};
 
 /**
  * @apiDefine ChallengeSuccessExample
- * @apiSuccessExample {json} Sucessfull response with single challenge
+ * @apiSuccessExample {json} Successful response with single challenge
  {
    "data": {
      "group": {
@@ -112,7 +113,7 @@ let api = {};
 
 /**
  * @apiDefine ChallengeArrayExample
- * @apiSuccessExample {json} Sucessful response with array of challenges
+ * @apiSuccessExample {json} Successful response with array of challenges
  {
    "data": [{
      "group": {
@@ -161,7 +162,7 @@ let api = {};
  * @apiDescription Creates a challenge. Cannot create associated tasks with this route. See <a href="#api-Task-CreateChallengeTasks">CreateChallengeTasks</a>.
  *
  * @apiParam (Body) {Object} challenge An object representing the challenge to be created
- * @apiParam (Body) {UUID} challenge.groupId The id of the group to which the challenge belongs
+ * @apiParam (Body) {UUID} challenge.group The id of the group to which the challenge belongs
  * @apiParam (Body) {String} challenge.name The full name of the challenge
  * @apiParam (Body) {String} challenge.shortName A shortened name for the challenge, to be used as a tag
  * @apiParam (Body) {String} [challenge.summary] A short summary advertising the main purpose of the challenge; maximum 250 characters; if not supplied, challenge.name will be used
@@ -187,7 +188,7 @@ api.createChallenge = {
   async handler (req, res) {
     let user = res.locals.user;
 
-    req.checkBody('group', res.t('groupIdRequired')).notEmpty();
+    req.checkBody('group', apiError('groupIdRequired')).notEmpty();
 
     const validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
@@ -246,7 +247,7 @@ api.joinChallenge = {
     if (challenge.isMember(user)) throw new NotAuthorized(res.t('userAlreadyInChallenge'));
 
     let group = await Group.getGroup({user, groupId: challenge.group, fields: basicGroupFields, optionalMembership: true});
-    if (!group || !challenge.hasAccess(user, group)) throw new NotFound(res.t('challengeNotFound'));
+    if (!group || !challenge.canJoin(user, group)) throw new NotFound(res.t('challengeNotFound'));
 
     challenge.memberCount += 1;
 
@@ -305,7 +306,7 @@ api.leaveChallenge = {
     if (!challenge.isMember(user)) throw new NotAuthorized(res.t('challengeMemberNotFound'));
 
     // Unlink challenge's tasks from user's tasks and save the challenge
-    await Promise.all([challenge.unlinkTasks(user, keep), challenge.save()]);
+    await challenge.unlinkTasks(user, keep);
 
     res.analytics.track('challenge leave', {
       uuid: user._id,
@@ -322,7 +323,7 @@ api.leaveChallenge = {
 };
 
 /**
- * @api {get} /api/v3/challenges/user Get challenges for a user.
+ * @api {get} /api/v3/challenges/user Get challenges for a user
  * @apiName GetUserChallenges
  * @apiGroup Challenge
  * @apiDescription Get challenges the user has access to. Includes public challenges, challenges belonging to the user's group, and challenges the user has already joined.
@@ -363,12 +364,14 @@ api.getUserChallenges = {
       $and: [{$or: orOptions}],
     };
 
-    if (owned && owned === 'not_owned') {
-      query.$and.push({leader: {$ne: user._id}});
-    }
+    if (owned) {
+      if (owned === 'not_owned') {
+        query.$and.push({leader: {$ne: user._id}});
+      }
 
-    if (owned && owned === 'owned') {
-      query.$and.push({leader: user._id});
+      if (owned === 'owned') {
+        query.$and.push({leader: user._id});
+      }
     }
 
     if (req.query.search) {
@@ -399,7 +402,6 @@ api.getUserChallenges = {
     // .populate('leader', nameFields)
     const challenges = await mongoQuery.exec();
 
-
     let resChals = challenges.map(challenge => challenge.toJSON());
 
     resChals = _.orderBy(resChals, [challenge => {
@@ -409,7 +411,7 @@ api.getUserChallenges = {
     // Instead of populate we make a find call manually because of https://github.com/Automattic/mongoose/issues/3833
     await Promise.all(resChals.map((chal, index) => {
       return Promise.all([
-        User.findById(chal.leader).select(nameFields).exec(),
+        User.findById(chal.leader).select(`${nameFields} backer contributor`).exec(),
         Group.findById(chal.group).select(basicGroupFields).exec(),
       ]).then(populatedData => {
         resChals[index].leader = populatedData[0] ? populatedData[0].toJSON({minimize: true}) : null;
@@ -423,11 +425,11 @@ api.getUserChallenges = {
 
 /**
  * @api {get} /api/v3/challenges/groups/:groupId Get challenges for a group
- * @apiDescription Get challenges that the user is a member, public challenges and the ones from the user's groups.
+ * @apiDescription Get challenges hosted in the specified group.
  * @apiName GetGroupChallenges
  * @apiGroup Challenge
  *
- * @apiParam (Path) {UUID} groupId The group _id
+ * @apiParam (Path) {UUID} groupId The group id ('party' for the user party and 'habitrpg' for tavern are accepted)
  *
  * @apiSuccess {Array} data An array of challenges sorted with official challenges first, followed by the challenges in order from newest to oldest
  *
@@ -439,12 +441,15 @@ api.getUserChallenges = {
 api.getGroupChallenges = {
   method: 'GET',
   url: '/challenges/groups/:groupId',
-  middlewares: [authWithHeaders()],
+  middlewares: [authWithHeaders({
+    // Some fields (including _id) are always loaded (see middlewares/auth)
+    userFieldsToInclude: ['party', 'guilds'], // Some fields are always loaded (see middlewares/auth)
+  })],
   async handler (req, res) {
     let user = res.locals.user;
     let groupId = req.params.groupId;
 
-    req.checkParams('groupId', res.t('groupIdRequired')).notEmpty();
+    req.checkParams('groupId', apiError('groupIdRequired')).notEmpty();
 
     let validationErrors = req.validationErrors();
     if (validationErrors) throw validationErrors;
@@ -452,12 +457,12 @@ api.getGroupChallenges = {
     if (groupId === 'party') groupId = user.party._id;
     if (groupId === 'habitrpg') groupId = TAVERN_ID;
 
-    let group = await Group.getGroup({user, groupId});
+    const group = await Group.getGroup({ user, groupId });
     if (!group) throw new NotFound(res.t('groupNotFound'));
 
-    let challenges = await Challenge.find({group: groupId})
+    const challenges = await Challenge.find({ group: groupId })
       .sort('-createdAt')
-      // .populate('leader', nameFields) // Only populate the leader as the group is implicit
+      // .populate('leader', nameFields) // Only populate the leader as the group is implicit // see below why we're not using populate
       .exec();
 
     let resChals = challenges.map(challenge => challenge.toJSON());
@@ -574,11 +579,21 @@ api.exportChallengeCsv = {
         .lean().exec(),
     ]);
 
-    let resArray = members.map(member => [member._id, member.profile.name]);
+    let resArray = members.map(member => [member._id, member.profile.name, member.auth.local.username]);
 
     let lastUserId;
     let index = -1;
     tasks.forEach(task => {
+      /**
+       * Occasional error does not unlink a user's challenge tasks from that challenge's data
+       * after the user leaves that challenge, which previously caused a failure when exporting
+       * to a CSV. The following if statement makes sure that the task's attached user still
+       * belongs to the challenge.
+       * See more at https://github.com/HabitRPG/habitica/issues/8350
+       */
+      if (!resArray.map(line => line[0]).includes(task.userId)) {
+        return;
+      }
       while (task.userId !== lastUserId) {
         index++;
         lastUserId = resArray[index][0]; // resArray[index][0] is an user id
@@ -593,7 +608,7 @@ api.exportChallengeCsv = {
     let challengeTasks = _.reduce(challenge.tasksOrder.toObject(), (result, array) => {
       return result.concat(array);
     }, []).sort();
-    resArray.unshift(['UUID', 'name']);
+    resArray.unshift(['UUID', 'Display Name', 'Username']);
 
     _.times(challengeTasks.length, () => resArray[0].push('Task', 'Value', 'Notes', 'Streak'));
 
@@ -617,7 +632,7 @@ api.exportChallengeCsv = {
 };
 
 /**
- * @api {put} /api/v3/challenges/:challengeId Update the name, description, or leader of a challenge.
+ * @api {put} /api/v3/challenges/:challengeId Update the name, description, or leader of a challenge
  *
  * @apiName UpdateChallenge
  * @apiGroup Challenge

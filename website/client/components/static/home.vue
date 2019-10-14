@@ -7,11 +7,11 @@
     #intro-signup.purple-1
       .container
         .row
-          .col-12.col-sm-6.col-md-6.col-lg-6
+          .col-12.col-md-6.col-lg-6
             img(src='~assets/images/home/home-main@3x.png', width='357px')
             h1 {{$t('motivateYourself')}}
-            p.section-main {{$t('timeToGetThingsDone')}}
-          .col-12.col-sm-6.col-md-6.col-lg-6
+            p.section-main {{$t('timeToGetThingsDone', {userCountInMillions})}}
+          .col-12.col-md-6.col-lg-6
             h3.text-center {{$t('singUpForFree')}}
             div.text-center
               button.social-button(@click='socialAuth("facebook")')
@@ -24,10 +24,11 @@
               span {{$t('or')}}
             .form(@keyup.enter="register()")
               p.form-text {{$t('usernameLimitations')}}
-              input.form-control(type='text', placeholder='Login Name', v-model='username', :class='{"input-valid": username.length > 3}')
-              input.form-control(type='email', placeholder='Email', v-model='email', :class='{"input-invalid": emailInvalid, "input-valid": emailValid}')
-              input.form-control(type='password', placeholder='Password', v-model='password', :class='{"input-valid": password.length > 3}')
-              input.form-control(type='password', placeholder='Confirm Password', v-model='passwordConfirm', :class='{"input-invalid": passwordConfirmInvalid, "input-valid": passwordConfirmValid}')
+              input#usernameInput.form-control(type='text', :placeholder='$t("username")', v-model='username', :class='{"input-valid": usernameValid, "input-invalid": usernameInvalid}')
+              .input-error(v-for="issue in usernameIssues") {{ issue }}
+              input.form-control(type='email', :placeholder='$t("email")', v-model='email', :class='{"input-invalid": emailInvalid, "input-valid": emailValid}')
+              input.form-control(type='password', :placeholder='$t("password")', v-model='password', :class='{"input-valid": password.length > 3}')
+              input.form-control(type='password', :placeholder='$t("confirmPassword")', v-model='passwordConfirm', :class='{"input-invalid": passwordConfirmInvalid, "input-valid": passwordConfirmValid}')
               p.form-text(v-once, v-html="$t('termsAndAgreement')")
               button.sign-up(@click="register()") {{$t('signup')}}
           .col-12
@@ -42,15 +43,15 @@
             h2 {{$t('gamifyYourLife')}}
             p.section-main {{$t('aboutHabitica')}}
         .row
-          .col-12.col-sm-4
+          .col-12.col-md-4
             img.track-habits(src='~assets/images/home/track-habits@3x.png', width='354px', height='228px')
             strong {{$t('trackYourGoals')}}
             p {{$t('trackYourGoalsDesc')}}
-          .col-12.col-sm-4
+          .col-12.col-md-4
             img(src='~assets/images/home/earn-rewards@3x.png', width='316px', height='244px')
             strong {{$t('earnRewards')}}
             p {{$t('earnRewardsDesc')}}
-          .col-12.col-sm-4
+          .col-12.col-md-4
             img(src='~assets/images/home/battle-monsters@3x.png', width='303px', height='244px')
             strong {{$t('battleMonsters')}}
             p {{$t('battleMonstersDesc')}}
@@ -83,9 +84,9 @@
     #level-up-anywhere.purple-3
       .container
         .row
-          .col-12.col-sm-6.col-md-6.col-lg-6
+          .col-12.col-md-6.col-lg-6
             .iphones
-          .col-12.col-sm-6.col-md-6.col-lg-6.text-column
+          .col-12.col-md-6.col-lg-6.text-column
             h2 {{ $t('levelUpAnywhere') }}
             p {{ $t('levelUpAnywhereDesc') }}
             a.app.svg-icon(v-html='icons.googlePlay', href='https://play.google.com/store/apps/details?id=com.habitrpg.android.habitica', target='_blank')
@@ -115,7 +116,7 @@
             .fast-company.svg-icon(v-html='icons.fastCompany')
             .discover.svg-icon(v-html='icons.discover')
       .container-fluid
-        .seamless_stars_varied_opacity_repeat
+        .row.seamless_stars_varied_opacity_repeat
 </template>
 
 <style lang='scss'>
@@ -124,6 +125,8 @@
 
 <style lang="scss" scoped>
 @import '~client/assets/scss/colors.scss';
+
+@import url('https://fonts.googleapis.com/css?family=Varela+Round');
 
   #front {
     .form-text a {
@@ -193,6 +196,11 @@
     .pixel-horizontal-3 {
       color: #271b3d;
     }
+
+    h1, h2, h3, h4, h5, h6, button, .strike > span, input {
+      font-family: 'Varela Round', sans-serif;
+      font-weight: normal;
+    }
   }
 
   #intro-signup {
@@ -255,6 +263,7 @@
     .strike > span {
       position: relative;
       display: inline-block;
+      line-height: 1.14;
     }
 
     .strike > span:before,
@@ -291,6 +300,10 @@
       border: solid 2px transparent;
       transition-timing-function: ease;
       transition: border .5s, color .5s;
+    }
+
+    #usernameInput.input-invalid {
+      margin-bottom: 0.5em;
     }
 
     .input-valid {
@@ -345,6 +358,9 @@
     text-align: center;
 
     img {
+      max-width: 100%;
+      display: block;
+      margin: 0 auto;
       margin-top: 1em;
       margin-bottom: 1.5em;
     }
@@ -354,13 +370,17 @@
     }
 
     strong {
-      font-size: 20px;
+      font-size: 24px;
+      font-family: 'Varela Round', sans-serif;
+      line-height: 1.33;
     }
   }
 
   #use-cases {
     strong {
-      font-size: 20px;
+      font-size: 24px;
+      font-family: 'Varela Round', sans-serif;
+      line-height: 1.33;
     }
 
     img {
@@ -387,6 +407,8 @@
     .iphones {
       width: 436px;
       height: 520px;
+      max-width: 100%;
+      background-repeat: no-repeat;
       background-size: 100%;
       background-image: url('~assets/images/home/mobile-preview@3x.png');
     }
@@ -435,6 +457,11 @@
 
     .featured {
       text-align: center;
+      font-family: 'Varela Round', sans-serif;
+
+      strong {
+        font-size: 12px;
+      }
 
       .svg-icon {
         vertical-align: bottom;
@@ -520,10 +547,20 @@
       margin-bottom: .5em;
     }
   }
+
+  .input-error {
+    color: #fff;
+    font-size: 90%;
+    width: 100%;
+    text-align: center;
+    margin-bottom: 1em;
+  }
 </style>
 
 <script>
   import hello from 'hellojs';
+  import debounce from 'lodash/debounce';
+  import isEmail from 'validator/lib/isEmail';
   import googlePlay from 'assets/images/home/google-play-badge.svg';
   import iosAppStore from 'assets/images/home/ios-app-store.svg';
   import iphones from 'assets/images/home/iphones.svg';
@@ -565,11 +602,12 @@
           makeuseof,
           thenewyorktimes,
         }),
-        userCount: 1000000,
+        userCountInMillions: 3,
         username: '',
         password: '',
         passwordConfirm: '',
         email: '',
+        usernameIssues: [],
       };
     },
     mounted () {
@@ -589,11 +627,19 @@
     computed: {
       emailValid () {
         if (this.email.length <= 3) return false;
-        return this.validateEmail(this.email);
+        return isEmail(this.email);
       },
       emailInvalid () {
         if (this.email.length <= 3) return false;
-        return !this.validateEmail(this.email);
+        return !isEmail(this.email);
+      },
+      usernameValid () {
+        if (this.username.length < 1) return false;
+        return this.usernameIssues.length === 0;
+      },
+      usernameInvalid () {
+        if (this.username.length < 1) return false;
+        return !this.usernameValid;
       },
       passwordConfirmValid () {
         if (this.passwordConfirm.length <= 3) return false;
@@ -604,18 +650,29 @@
         return this.passwordConfirm !== this.password;
       },
     },
-    methods: {
-      validateEmail (email) {
-        let re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-        return re.test(email);
+    watch: {
+      username () {
+        this.validateUsername(this.username);
       },
-      // @TODO this is totally duplicate from the registerLogin component
-      async register () {
-        if (this.password !== this.passwordConfirm) {
-          alert('Passwords must match');
+    },
+    methods: {
+      // eslint-disable-next-line func-names
+      validateUsername: debounce(function (username) {
+        if (username.length < 1) {
           return;
         }
-
+        this.$store.dispatch('auth:verifyUsername', {
+          username: this.username,
+        }).then(res => {
+          if (res.issues !== undefined) {
+            this.usernameIssues = res.issues;
+          } else {
+            this.usernameIssues = [];
+          }
+        });
+      }, 500),
+      // @TODO this is totally duplicate from the registerLogin component
+      async register () {
         let groupInvite = '';
         if (this.$route.query && this.$route.query.p) {
           groupInvite = this.$route.query.p;
@@ -652,13 +709,17 @@
         });
         this.$router.push('/register');
       },
+      // @TODO: Abstract hello in to action or lib
       async socialAuth (network) {
-        const url = window.location.href;
+        try {
+          await hello(network).logout();
+        } catch (e) {} // eslint-disable-line
 
-        let auth = await hello(network).login({
+        const redirectUrl = `${window.location.protocol}//${window.location.host}`;
+        const auth = await hello(network).login({
           scope: 'email',
           // explicitly pass the redirect url or it might redirect to /home
-          redirect_uri: url, // eslint-disable-line camelcase
+          redirect_uri: redirectUrl, // eslint-disable-line camelcase
         });
 
         await this.$store.dispatch('auth:socialAuth', {

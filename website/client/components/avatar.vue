@@ -15,22 +15,22 @@
 
     // Show avatar only if not currently affected by visual buff
     template(v-if="showAvatar()")
-      span(:class="'chair_' + member.preferences.chair")
-      span(:class="getGearClass('back')")
-      span(:class="skinClass")
-      span(:class="member.preferences.size + '_shirt_' + member.preferences.shirt")
-      span.head_0
-      span(:class="member.preferences.size + '_' + getGearClass('armor')")
-      span(:class="getGearClass('back_collar')")
+      span(:class="['chair_' + member.preferences.chair, specialMountClass]")
+      span(:class="[getGearClass('back'), specialMountClass]")
+      span(:class="[skinClass, specialMountClass]")
+      span(:class="[member.preferences.size + '_shirt_' + member.preferences.shirt, specialMountClass]")
+      span(:class="['head_0', specialMountClass]")
+      span(:class="[member.preferences.size + '_' + getGearClass('armor'), specialMountClass]")
+      span(:class="[getGearClass('back_collar'), specialMountClass]")
       template(v-for="type in ['bangs', 'base', 'mustache', 'beard']")
-        span(:class="'hair_' + type + '_' + member.preferences.hair[type] + '_' + member.preferences.hair.color")
-      span(:class="getGearClass('body')")
-      span(:class="getGearClass('eyewear')")
-      span(:class="getGearClass('head')")
-      span(:class="getGearClass('headAccessory')")
-      span(:class="'hair_flower_' + member.preferences.hair.flower")
-      span(v-if="!hideGear('shield')", :class="getGearClass('shield')")
-      span(v-if="!hideGear('weapon')", :class="getGearClass('weapon')")
+        span(:class="['hair_' + type + '_' + member.preferences.hair[type] + '_' + member.preferences.hair.color, specialMountClass]")
+      span(:class="[getGearClass('body'), specialMountClass]")
+      span(:class="[getGearClass('eyewear'), specialMountClass]")
+      span(:class="[getGearClass('head'), specialMountClass]")
+      span(:class="[getGearClass('headAccessory'), specialMountClass]")
+      span(:class="['hair_flower_' + member.preferences.hair.flower, specialMountClass]")
+      span(v-if="!hideGear('shield')", :class="[getGearClass('shield'), specialMountClass]")
+      span(v-if="!hideGear('weapon')", :class="[getGearClass('weapon'), specialMountClass]")
 
     // Resting
     span.zzz(v-if="member.preferences.sleep")
@@ -47,7 +47,7 @@
   @import '~client/assets/scss/colors.scss';
 
   .avatar {
-    width: 140px;
+    width: 141px;
     height: 147px;
     image-rendering: pixelated;
     position: relative;
@@ -66,6 +66,10 @@
   .current-pet {
     bottom: 0px;
     left: 0px;
+  }
+
+  .offset-kangaroo {
+    margin-top: 24px;
   }
 </style>
 
@@ -132,10 +136,10 @@ export default {
         return this.overrideTopPadding;
       }
 
-      let val = '28px';
+      let val = '27px';
 
       if (!this.avatarOnly) {
-        if (this.member.items.currentPet) val = '24.5px';
+        if (this.member.items.currentPet) val = '24px';
         if (this.member.items.currentMount) val = '0px';
       }
 
@@ -171,6 +175,11 @@ export default {
     },
     costumeClass () {
       return this.member.preferences.costume ? 'costume' : 'equipped';
+    },
+    specialMountClass () {
+      if (!this.avatarOnly && this.member.items.currentMount && this.member.items.currentMount.indexOf('Kangaroo') !== -1) {
+        return 'offset-kangaroo';
+      }
     },
   },
   methods: {

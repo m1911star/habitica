@@ -6,10 +6,9 @@
     :withPin="true",
     @change="resetItemToBuy($event)"
     v-if='type === "reward"')
-  .d-flex
-    h2.tasks-column-title
-      | {{ $t(typeLabel) }}
-      .badge.badge-pill.badge-purple.column-badge(v-if="badgeCount > 0") {{ badgeCount }}
+  .d-flex.align-items-center
+    h2.column-title {{ $t(typeLabel) }}
+    .badge.badge-pill.badge-purple.column-badge.mx-1(v-if="badgeCount > 0") {{ badgeCount }}
     .filters.d-flex.justify-content-end
       .filter.small-text(
         v-for="filter in typeFilters",
@@ -25,8 +24,8 @@
       @focus="quickAddFocused = true", @blur="quickAddFocused = false",
     )
     transition(name="quick-add-tip-slide")
-      .quick-add-tip.small-text(v-show="quickAddFocused", v-html="$t('addMultipleTip')")
-    clear-completed-todos(v-if="activeFilter.label === 'complete2' && isUser === true")
+      .quick-add-tip.small-text(v-show="quickAddFocused", v-html="$t('addMultipleTip', {taskType: $t(typeLabel)})")
+    clear-completed-todos(v-if="activeFilter.label === 'complete2' && isUser === true && taskList.length > 0")
     .column-background(
       v-if="isUser === true",
       :class="{'initial-description': initialColumnDescription}",
@@ -38,24 +37,26 @@
     draggable.sortable-tasks(
       ref="tasksList",
       @update='taskSorted',
-      :options='{disabled: activeFilter.label === "scheduled"}',
-      class="sortable-tasks"
+      @start="isDragging(true)",
+      @end="isDragging(false)",
+      :options='{disabled: activeFilter.label === "scheduled" || !isUser, scrollSensitivity: 64}',
     )
       task(
         v-for="task in taskList",
         :key="task.id", :task="task",
         :isUser="isUser",
+        :showOptions="showOptions"
         @editTask="editTask",
         @moveTo="moveTo",
         :group='group',
+        v-on:taskDestroyed='taskDestroyed'
       )
     template(v-if="hasRewardsList")
-      draggable(
+      draggable.reward-items(
         ref="rewardsList",
         @update="rewardSorted",
         @start="rewardDragStart",
         @end="rewardDragEnd",
-        class="reward-items",
       )
         shopItem(
           v-for="reward in inAppRewards",
@@ -77,15 +78,21 @@
 <style lang="scss" scoped>
   @import '~client/assets/scss/colors.scss';
 
+  /deep/ .draggable-cursor {
+    cursor: grabbing;
+  }
 
   .tasks-column {
     min-height: 556px;
   }
 
+  .sortable-tasks {
+    word-break: break-word;
+  }
+
   .sortable-tasks + .reward-items {
     margin-top: 16px;
   }
-
 
   .reward-items {
     @supports (display: grid) {
@@ -147,7 +154,6 @@
     text-align: center;
 
     overflow-y: hidden;
-    max-height: 65px; // approximate max height
   }
 
   .quick-add-tip-slide-enter-active {
@@ -160,21 +166,22 @@
 
   .quick-add-tip-slide-enter, .quick-add-tip-slide-leave-to {
     max-height: 0;
-    padding: 0px 16px;
+    padding: 0 16px;
   }
 
-  .tasks-column-title {
-    margin-bottom: 8px;
-    position: relative;
+  .column-title {
+    margin-bottom: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .column-badge {
-    top: -5px;
-    right: -24px;
+    position: static;
   }
 
   .filters {
-    flex-grow: 1;
+    margin-left: auto;
   }
 
   .filter {
@@ -183,6 +190,7 @@
     font-style: normal;
     padding: 8px;
     cursor: pointer;
+    white-space: nowrap;
 
     &:hover {
       color: $purple-200;
@@ -197,7 +205,9 @@
 
   .column-background {
     position: absolute;
+    width: 100%;
     bottom: 32px;
+    margin-left: -8px;
 
     &.initial-description {
       top: 30%;
@@ -301,6 +311,10 @@ export default {
     selectedTags: {},
     taskListOverride: {},
     group: {},
+    showOptions: {
+      type: Boolean,
+      default: true,
+    },
   }, // @TODO: maybe we should store the group on state?
   data () {
     const icons = Object.freeze({
@@ -330,6 +344,7 @@ export default {
       showPopovers: true,
 
       selectedItemToBuy: {},
+      dragging: false,
     };
   },
   created () {
@@ -357,7 +372,7 @@ export default {
           type: this.type,
           filterType: this.activeFilter.label,
         }) :
-        this.taskListOverride;
+        this.filterByLabel(this.taskListOverride, this.activeFilter.label);
 
       let taggedList = this.filterByTagList(filteredTaskList, this.selectedTags);
       let searchedList = this.filterBySearchText(taggedList, this.searchText);
@@ -369,7 +384,7 @@ export default {
       let rewards = inAppRewards(this.user);
 
       // Add season rewards if user is affected
-      // @TODO: Add buff coniditional
+      // @TODO: Add buff conditional
       const seasonalSkills = {
         snowball: 'salt',
         spookySparkles: 'opaquePotion',
@@ -444,9 +459,9 @@ export default {
     });
 
     if (this.type !== 'todo') return;
-    this.$root.$on('habitica::resync-requested', () => {
-      if (this.activeFilters.todo.label !== 'complete2') return;
-      this.loadCompletedTodos(true);
+    this.$root.$on('habitica::resync-completed', () => {
+      if (this.activeFilter.label !== 'complete2') return;
+      this.loadCompletedTodos();
     });
   },
   destroyed () {
@@ -471,7 +486,7 @@ export default {
       const newIndexOnServer = originTasks.findIndex(taskId => taskId === taskIdToReplace);
 
       let newOrder;
-      if (taskToMove.group.id) {
+      if (taskToMove.group.id && !this.isUser) {
         newOrder = await this.$store.dispatch('tasks:moveGroupTask', {
           taskId: taskIdToMove,
           position: newIndexOnServer,
@@ -516,9 +531,11 @@ export default {
     rewardDragStart () {
       // We need to stop popovers from interfering with our dragging
       this.showPopovers = false;
+      this.isDragging(true);
     },
     rewardDragEnd () {
       this.showPopovers = true;
+      this.isDragging(false);
     },
     quickAdd (ev) {
       // Add a new line if Shift+Enter Pressed
@@ -535,7 +552,7 @@ export default {
       const tasks = text.split('\n').reverse().filter(taskText => {
         return taskText ? true : false;
       }).map(taskText => {
-        const task = taskDefaults({type: this.type, text: taskText});
+        const task = taskDefaults({type: this.type, text: taskText}, this.user);
         task.tags = this.selectedTags;
         return task;
       });
@@ -543,6 +560,7 @@ export default {
       this.quickAddText = '';
       this.quickAddRows = 1;
       this.createTask(tasks);
+      this.$refs.quickAdd.blur();
     },
     editTask (task) {
       this.$emit('editTask', task);
@@ -550,7 +568,11 @@ export default {
     activateFilter (type, filter = '') {
       // Needs a separate API call as this data may not reside in store
       if (type === 'todo' && filter === 'complete2') {
-        this.loadCompletedTodos();
+        if (this.group && this.group._id) {
+          this.$emit('loadGroupCompletedTodos');
+        } else {
+          this.loadCompletedTodos();
+        }
       }
 
       // the only time activateFilter is called with filter==='' is when the component is first created
@@ -588,9 +610,18 @@ export default {
         }
       });
     },
+    filterByLabel (taskList, filter) {
+      if (!taskList) return [];
+      return taskList.filter(task => {
+        if (filter === 'complete2') return task.completed;
+        if (filter === 'due') return task.isDue;
+        if (filter === 'notDue') return !task.isDue;
+        return !task.completed;
+      });
+    },
     filterByTagList (taskList, tagList = []) {
       let filteredTaskList = taskList;
-      // fitler requested tasks by tags
+      // filter requested tasks by tags
       if (!isEmpty(tagList)) {
         filteredTaskList = taskList.filter(
           task => tagList.every(tag => task.tags.indexOf(tag) !== -1)
@@ -658,6 +689,17 @@ export default {
       } catch (e) {
         this.error(e.message);
       }
+    },
+    isDragging (dragging) {
+      this.dragging = dragging;
+      if (dragging) {
+        document.documentElement.classList.add('draggable-cursor');
+      } else {
+        document.documentElement.classList.remove('draggable-cursor');
+      }
+    },
+    taskDestroyed (task) {
+      this.$emit('taskDestroyed', task);
     },
   },
 };

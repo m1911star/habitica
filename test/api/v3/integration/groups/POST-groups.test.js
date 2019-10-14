@@ -1,7 +1,7 @@
 import {
   generateUser,
   translate as t,
-} from '../../../../helpers/api-v3-integration.helper';
+} from '../../../../helpers/api-integration/v3';
 
 describe('POST /group', () => {
   let user;
@@ -149,7 +149,7 @@ describe('POST /group', () => {
         ).to.eventually.be.rejected.and.eql({
           code: 401,
           error: 'NotAuthorized',
-          message: t('cannotCreatePublicGuildWhenMuted'),
+          message: t('chatPrivilegesRevoked'),
         });
       });
     });

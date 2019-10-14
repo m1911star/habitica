@@ -22,8 +22,8 @@
           .how-many-to-buy
             strong {{ $t('howManyToBuy') }}
           .box
-            input(type='number', min='0', v-model.number='selectedAmountToBuy')
-          span.svg-icon.inline.icon-32(aria-hidden="true", v-html="(priceType  === 'gems') ? icons.gem : icons.gold")
+            input(type='number', min='0', step='1', v-model.number='selectedAmountToBuy')
+          span.svg-icon.inline.icon-32(aria-hidden="true", v-html="currencyIcon")
           span.value(:class="priceType") {{ item.value }}
 
         button.btn.btn-primary(
@@ -34,7 +34,8 @@
         button.btn.btn-primary(
           @click="buyItem()",
           v-else,
-          :class="{'notEnough': !this.enoughCurrency(priceType, item.value * selectedAmountToBuy)}"
+          :class="{'notEnough': !this.enoughCurrency(priceType, item.value * selectedAmountToBuy)}",
+          :disabled='numberInvalid',
         ) {{ $t('buyNow') }}
 
     div.right-sidebar(v-if="item.drop")
@@ -43,6 +44,7 @@
     div.clearfix(slot="modal-footer")
       span.balance.float-left {{ $t('yourBalance') }}
       balanceInfo(
+        :withHourglass="priceType === 'hourglasses'",
         :currencyNeeded="priceType",
         :amountNeeded="item.value"
       ).float-right
@@ -62,7 +64,6 @@
 
     .content {
       text-align: center;
-      overflow-y: scroll;
     }
 
     .item-wrapper {
@@ -71,14 +72,12 @@
 
     .inner-content {
       margin: 33px auto auto;
-      width: 400px;
     }
 
 
     .questInfo {
       width: 70%;
-      margin: 0 auto;
-      margin-bottom: 10px;
+      margin: 0 auto 10px auto;
     }
 
     .right-sidebar {
@@ -99,9 +98,7 @@
     span.svg-icon.inline.icon-32 {
       height: 32px;
       width: 32px;
-
       margin-right: 8px;
-
       vertical-align: middle;
     }
 
@@ -112,7 +109,6 @@
       font-size: 24px;
       font-weight: bold;
       line-height: 1.33;
-
       vertical-align: middle;
 
       &.gems {
@@ -161,7 +157,6 @@
       }
     }
 
-
     .notEnough {
       pointer-events: none;
       opacity: 0.55;
@@ -208,18 +203,20 @@
   import svgGem from 'assets/svg/gem.svg';
   import svgPin from 'assets/svg/pin.svg';
   import svgExperience from 'assets/svg/experience.svg';
+  import svgHourglasses from 'assets/svg/hourglass.svg';
 
   import BalanceInfo  from '../balanceInfo.vue';
   import currencyMixin from '../_currencyMixin';
   import QuestInfo from './questInfo.vue';
   import notifications from 'client/mixins/notifications';
   import buyMixin from 'client/mixins/buy';
+  import numberInvalid from 'client/mixins/numberInvalid';
 
   import questDialogDrops from './questDialogDrops';
   import questDialogContent from './questDialogContent';
 
   export default {
-    mixins: [currencyMixin, notifications, buyMixin],
+    mixins: [buyMixin, currencyMixin, notifications, numberInvalid],
     components: {
       BalanceInfo,
       QuestInfo,
@@ -234,6 +231,7 @@
           gem: svgGem,
           pin: svgPin,
           experience: svgExperience,
+          hourglass: svgHourglasses,
         }),
 
         isPinned: false,
@@ -263,6 +261,11 @@
           return this.item.notes;
         }
       },
+      currencyIcon () {
+        if (this.priceType === 'gold') return this.icons.gold;
+        if (this.priceType === 'hourglasses') return this.icons.hourglass;
+        return this.icons.gem;
+      },
     },
     methods: {
       onChange ($event) {
@@ -270,6 +273,9 @@
         this.$emit('change', $event);
       },
       buyItem () {
+        if (!this.confirmPurchase(this.item.currency, this.item.value * this.selectedAmountToBuy)) {
+          return;
+        }
         this.makeGenericPurchase(this.item, 'buyQuestModal', this.selectedAmountToBuy);
         this.purchased(this.item.text);
         this.hideDialog();
@@ -316,7 +322,6 @@
             return `Unknown type: ${drop.type}`;
         }
       },
-
       purchaseGems () {
         this.$root.$emit('bv::show::modal', 'buy-gems');
       },

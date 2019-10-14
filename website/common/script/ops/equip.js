@@ -6,6 +6,7 @@ import {
   BadRequest,
 } from '../libs/errors';
 import get from 'lodash/get';
+import errorMessage from '../libs/errorMessage';
 
 module.exports = function equip (user, req = {}) {
   // Being type a parameter followed by another parameter
@@ -13,9 +14,9 @@ module.exports = function equip (user, req = {}) {
   let type = get(req, 'params.type', 'equipped');
   let key = get(req, 'params.key');
 
-  if (!key || !type) throw new BadRequest(i18n.t('missingTypeKeyEquip', req.language));
+  if (!key || !type) throw new BadRequest(errorMessage('missingTypeKeyEquip'));
   if (['mount', 'pet', 'costume', 'equipped'].indexOf(type) === -1) {
-    throw new BadRequest(i18n.t('invalidTypeEquip', req.language));
+    throw new BadRequest(errorMessage('invalidTypeEquip'));
   }
 
   let message;
@@ -51,6 +52,8 @@ module.exports = function equip (user, req = {}) {
           user.items.gear[type].toObject ? user.items.gear[type].toObject() : user.items.gear[type],
           {[item.type]: `${item.type}_base_0`}
         );
+        if (user.markModified && type === 'owned') user.markModified('items.gear.owned');
+
         message = i18n.t('messageUnEquipped', {
           itemText: item.text(req.language),
         }, req.language);
@@ -60,6 +63,8 @@ module.exports = function equip (user, req = {}) {
           user.items.gear[type].toObject ? user.items.gear[type].toObject() : user.items.gear[type],
           {[item.type]: item.key}
         );
+        if (user.markModified && type === 'owned') user.markModified('items.gear.owned');
+
         message = handleTwoHanded(user, item, type, req);
       }
       break;

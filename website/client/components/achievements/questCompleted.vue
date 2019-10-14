@@ -6,7 +6,7 @@
       .quest(:class='`quest_${user.party.quest.completed}`')
       p(v-if='questData.completion && typeof questData.completion === "function"', v-html='questData.completion()')
       .quest-rewards.text-center
-        h3 {{ $t('youReceived') }}
+        h3(v-once) {{ $t('paymentYouReceived') }}
         questDialogDrops(:item="questData")
     .modal-footer
       button.btn.btn-primary(@click='setQuestCompleted()') {{ $t('ok') }}
@@ -59,11 +59,10 @@ export default {
       this.$root.$emit('bv::hide::modal', 'quest-completed');
     },
     setQuestCompleted () {
-      this.$store.dispatch('user:set', {'party.quest.completed': ''});
       this.close();
     },
     hide () {
-      this.setQuestCompleted();
+      this.$store.dispatch('user:set', {'party.quest.completed': ''});
     },
   },
 };

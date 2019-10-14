@@ -1,8 +1,11 @@
 {
-  "share": "Udostępnij",
-  "onwards": "Naprzód!",
-  "levelup": "Realizując życiowe cele, zyskałeś poziom i jesteś teraz w pełni wyleczony!",
-  "reachedLevel": "Osiągnąłeś Poziom <%= level %>",
-  "achievementLostMasterclasser": "Wypełniacz Misji: Mistrzowie Klas",
-  "achievementLostMasterclasserText": "Wykonałeś wszystkie szesnaście misji w cyklu Mistrzów Klas i rozwiązałeś zagadkę Zaginionego Mistrza!"
+    "achievement": "Osiągnięcie",
+    "share": "Udostępnij",
+    "onwards": "Naprzód!",
+    "levelup": "Realizując życiowe cele, osiągnąłeś wyższy poziom i jesteś teraz w pełni wyleczony!",
+    "reachedLevel": "Osiągnąłeś poziom <%= level %>",
+    "achievementLostMasterclasser": "Realizator misji: Mistrzowie Klas",
+    "achievementLostMasterclasserText": "Wykonano wszystkie szesnaście misji w cyklu Mistrzów Klas i rozwiązano zagadkę Zaginionego Mistrza!",
+    "achievementAridAuthorityModalText": "Oswoiłeś wszystkie Pustynne Wierzchowce!",
+    "achievementLostMasterclasserModalText": "Wykonałeś wszystkie szesnaście misji z serii Mistrzowie Klas i rozwiązałeś zagadkę Zaginionego Mistrza!"
 }

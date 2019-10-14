@@ -9,6 +9,7 @@ import i18n from '../../../website/common/script/i18n';
 import {
   generateUser,
 } from '../../helpers/common.helper';
+import errorMessage from '../../../website/common/script/libs/errorMessage';
 
 describe('shared.ops.feed', () => {
   let user;
@@ -23,7 +24,7 @@ describe('shared.ops.feed', () => {
         feed(user);
       } catch (err) {
         expect(err).to.be.an.instanceof(BadRequest);
-        expect(err.message).to.equal(i18n.t('missingPetFoodFeed'));
+        expect(err.message).to.equal(errorMessage('missingPetFoodFeed'));
         done();
       }
     });
@@ -33,7 +34,7 @@ describe('shared.ops.feed', () => {
         feed(user, {params: {pet: 'invalid', food: 'food'}});
       } catch (err) {
         expect(err).to.be.an.instanceof(BadRequest);
-        expect(err.message).to.equal(i18n.t('invalidPetName'));
+        expect(err.message).to.equal(errorMessage('invalidPetName'));
         done();
       }
     });
@@ -43,7 +44,7 @@ describe('shared.ops.feed', () => {
         feed(user, {params: {pet: 'Wolf-Red', food: 'invalid food name'}});
       } catch (err) {
         expect(err).to.be.an.instanceof(NotFound);
-        expect(err.message).to.equal(i18n.t('messageFoodNotFound'));
+        expect(err.message).to.equal(errorMessage('invalidFoodName'));
         done();
       }
     });
@@ -166,6 +167,42 @@ describe('shared.ops.feed', () => {
 
       expect(user.items.food.Milk).to.equal(1);
       expect(user.items.pets['Wolf-Base']).to.equal(7);
+    });
+
+    it('awards All Your Base achievement', () => {
+      user.items.pets['Wolf-Spooky'] = 5;
+      user.items.food.Milk = 2;
+      user.items.mounts = {
+        'Wolf-Base': true,
+        'TigerCub-Base': true,
+        'PandaCub-Base': true,
+        'LionCub-Base': true,
+        'Fox-Base': true,
+        'FlyingPig-Base': true,
+        'Dragon-Base': true,
+        'Cactus-Base': true,
+        'BearCub-Base': true,
+      };
+      feed(user, {params: {pet: 'Wolf-Spooky', food: 'Milk'}});
+      expect(user.achievements.allYourBase).to.eql(true);
+    });
+
+    it('awards Arid Authority achievement', () => {
+      user.items.pets['Wolf-Spooky'] = 5;
+      user.items.food.Milk = 2;
+      user.items.mounts = {
+        'Wolf-Desert': true,
+        'TigerCub-Desert': true,
+        'PandaCub-Desert': true,
+        'LionCub-Desert': true,
+        'Fox-Desert': true,
+        'FlyingPig-Desert': true,
+        'Dragon-Desert': true,
+        'Cactus-Desert': true,
+        'BearCub-Desert': true,
+      };
+      feed(user, {params: {pet: 'Wolf-Spooky', food: 'Milk'}});
+      expect(user.achievements.aridAuthority).to.eql(true);
     });
 
     it('evolves the pet into a mount when feeding user.items.pets[pet] >= 50', () => {

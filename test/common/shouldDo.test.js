@@ -228,7 +228,7 @@ describe('shouldDo', () => {
       options.timezoneOffset = 0;
       options.nextDue = true;
 
-      day = moment('2017-05-01').toDate();
+      day = moment.utc('2017-05-01').toDate();
       dailyTask.frequency = 'daily';
       dailyTask.everyX = 2;
       dailyTask.startDate = day;
@@ -391,7 +391,7 @@ describe('shouldDo', () => {
       options.timezoneOffset = 0;
       options.nextDue = true;
 
-      day = moment('2017-05-01').toDate();
+      day = moment.utc('2017-05-01').toDate();
       dailyTask.frequency = 'weekly';
       dailyTask.everyX = 1;
       dailyTask.repeat = {
@@ -780,7 +780,7 @@ describe('shouldDo', () => {
       options.timezoneOffset = 0;
       options.nextDue = true;
 
-      day = moment('2017-05-01').toDate();
+      day = moment.utc('2017-05-01').toDate();
 
       dailyTask.frequency = 'monthly';
       dailyTask.everyX = 3;
@@ -817,7 +817,7 @@ describe('shouldDo', () => {
       expect(moment(nextDue[4]).toDate()).to.eql(moment.utc('2017-10-02').toDate());
       expect(moment(nextDue[5]).toDate()).to.eql(moment.utc('2017-11-06').toDate());
 
-      day = moment('2017-05-08').toDate();
+      day = moment.utc('2017-05-08').toDate();
 
       dailyTask.daysOfMonth = [];
       dailyTask.weeksOfMonth = [1];
@@ -841,7 +841,7 @@ describe('shouldDo', () => {
       expect(moment(nextDue[4]).toDate()).to.eql(moment.utc('2017-10-09').toDate());
       expect(moment(nextDue[5]).toDate()).to.eql(moment.utc('2017-11-13').toDate());
 
-      day = moment('2017-05-29').toDate();
+      day = moment.utc('2017-05-29').toDate();
 
       dailyTask.daysOfMonth = [];
       dailyTask.weeksOfMonth = [4];
@@ -966,7 +966,7 @@ describe('shouldDo', () => {
         m: false,
       };
 
-      let today = moment('2017-01-27');
+      let today = moment('2017-01-27:00:00.000-00:00');
       let week = today.monthWeek();
       let dayOfWeek = today.day();
       dailyTask.startDate = today.toDate();
@@ -974,7 +974,7 @@ describe('shouldDo', () => {
       dailyTask.repeat[DAY_MAPPING[dayOfWeek]] = true;
       dailyTask.everyX = 1;
       dailyTask.frequency = 'monthly';
-      day = moment('2017-02-24');
+      day = moment('2017-02-24:00:00.000-00:00');
 
       expect(shouldDo(day, dailyTask, options)).to.equal(true);
     });
@@ -1143,7 +1143,7 @@ describe('shouldDo', () => {
       options.timezoneOffset = 0;
       options.nextDue = true;
 
-      day = moment('2017-05-01').toDate();
+      day = moment.utc('2017-05-01').toDate();
 
       dailyTask.frequency = 'yearly';
       dailyTask.everyX = 5;

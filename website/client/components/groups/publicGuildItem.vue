@@ -24,10 +24,8 @@ router-link.card-link(:to="{ name: 'guild', params: { groupId: guild._id } }")
                 span.count {{ guild.balance * 4 }}
               div.guild-bank(v-if='displayGemBank', v-once) {{$t('guildBank')}}
           .row
-            .col-md-12
-              .category-label(v-for="category in guild.categorySlugs")
-                | {{$t(category)}}
-              span.recommend-text(v-if='showSuggested(guild._id)') Suggested because you’re new to Habitica.
+            category-tags.col-md-12(:categories="guild.categories", :owner="isOwner", v-once)
+              span.recommend-text(v-if='showSuggested(guild._id)')  {{$t('suggestedGroup')}}
 </template>
 
 <style lang="scss" scoped>
@@ -78,10 +76,18 @@ router-link.card-link(:to="{ name: 'guild', params: { groupId: guild._id } }")
 
     .gold {
       color: #fdbb5a;
+
+      .member-count {
+        color: #fdbb5a;
+      }
     }
 
     .silver {
       color: #c2c2c2;
+
+      .member-count {
+        color: #c2c2c2;
+      }
     }
 
     .badge-column {
@@ -103,13 +109,13 @@ router-link.card-link(:to="{ name: 'guild', params: { groupId: guild._id } }")
 
     .member-count {
       position: relative;
-      top: -3.6em;
-      font-size: 22px;
+      top: -3.7em;
+      font-size: 18px;
       font-weight: bold;
-      line-height: 1.2;
+      line-height: 1.1;
       text-align: center;
       color: #b36213;
-      margin-top: 2.1em;
+      margin-top: 2.0em;
     }
 
     .gem-bank {
@@ -128,6 +134,7 @@ router-link.card-link(:to="{ name: 'guild', params: { groupId: guild._id } }")
 <script>
 import moment from 'moment';
 import { mapState } from 'client/libs/store';
+import categoryTags from '../categories/categoryTags';
 import groupUtilities from 'client/mixins/groupsUtilities';
 import markdown from 'client/directives/markdown';
 import gemIcon from 'assets/svg/gem.svg';
@@ -142,8 +149,14 @@ export default {
     markdown,
   },
   props: ['guild', 'displayLeave', 'displayGemBank'],
+  components: {
+    categoryTags,
+  },
   computed: {
     ...mapState({user: 'user.data'}),
+    isOwner () {
+      return this.guild.leader && this.guild.leader === this.user._id;
+    },
     isMember () {
       return this.isMemberOfGroup(this.user, this.guild);
     },
@@ -162,8 +175,9 @@ export default {
   methods: {
     showSuggested (guildId) {
       let habiticaHelpingGuildId = '5481ccf3-5d2d-48a9-a871-70a7380cee5a';
-      let createdAfterRedesign = moment(this.user.auth.timestamps.created).isAfter('2017-08-01');
-      return guildId === habiticaHelpingGuildId && createdAfterRedesign;
+      let sixtyDaysAgoFromNow = moment().subtract(60, 'days');
+      let isUserNew = moment(this.user.auth.timestamps.created).isAfter(sixtyDaysAgoFromNow);
+      return guildId === habiticaHelpingGuildId && isUserNew;
     },
     async join () {
       // @TODO: This needs to be in the notifications where users will now accept invites
