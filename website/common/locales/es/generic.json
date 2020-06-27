@@ -61,7 +61,7 @@
     "newGroupTitle": "Nuevo Grupo",
     "subscriberItem": "Objeto misterioso",
     "newSubscriberItem": "Tienes <span class=\"notification-bold-blue\">Objetos Misteriosos</span> nuevos",
-    "subscriberItemText": "Cada mes, los suscriptores reciben un objeto misterioso, que se suele publicar una semana antes de cada fin de mes, aproximadamente. Para más información, consulta la página de la wiki sobre los objetos misteriosos.",
+    "subscriberItemText": "Cada mes, los suscriptores recibirán un objeto misterioso, que estará disponible al comienzo del mes. Para más información, consulta la página de la wiki sobre los objetos misteriosos.",
     "all": "Todo",
     "none": "Ninguno",
     "more": "<%= count %> más",
@@ -284,7 +284,7 @@
     "dismissAll": "Ignorar todas",
     "messages": "Mensajes",
     "emptyMessagesLine1": "No tienes ningún mensaje",
-    "emptyMessagesLine2": "¡Manda un mensaje para iniciar una conversación!",
+    "emptyMessagesLine2": "Puedes enviar un nuevo mensaje a un usuario visitando su perfil y haciendo clic en el botón \"Mensaje\".",
     "userSentMessage": "<span class=\"notification-bold\"><%= user %></span> te ha enviado un mensaje",
     "letsgo": "¡Vamos!",
     "selected": "Seleccionado",
@@ -294,5 +294,7 @@
     "options": "Opciones",
     "demo": "Demo",
     "loadEarlierMessages": "Cargar Mensajes Anteriores",
-    "finish": "Terminar"
+    "finish": "Terminar",
+    "congratulations": "¡Enhorabuena!",
+    "onboardingAchievs": "Logros de incorporación"
 }

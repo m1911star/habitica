@@ -13,11 +13,13 @@ const api = {};
 /* NOTE this route has also an API v3 version */
 
 /**
+ * @apiIgnore
  * @api {get} /api/v4/user Get the authenticated user's profile
  * @apiName UserGet
  * @apiGroup User
  *
- * @apiDescription The user profile contains data related to the authenticated user including (but not limited to);
+ * @apiDescription The user profile contains data related to the authenticated user
+ * including (but not limited to);
  * Achievements
  * Authentications (including types and timestamps)
  * Challenges
@@ -38,7 +40,9 @@ const api = {};
  * Tags
  * TasksOrder (list of all ids for dailys, habits, rewards and todos)
  *
- * @apiParam (Query) {String} [userFields] A list of comma separated user fields to be returned instead of the entire document. Notifications are always returned.
+ * @apiParam (Query) {String} [userFields] A list of comma separated user fields
+ *                                         to be returned instead of the entire document.
+ *                                         Notifications are always returned.
  *
  * @apiExample {curl} Example use:
  * curl -i https://habitica.com/api/v3/user?userFields=achievements,items.mounts
@@ -67,6 +71,7 @@ api.getUser = {
 /* NOTE this route has also an API v3 version */
 
 /**
+ * @apiIgnore
  * @api {put} /api/v4/user Update the user
  * @apiName UserUpdate
  * @apiGroup User
@@ -85,7 +90,8 @@ api.getUser = {
  *
  * @apiSuccess {Object} data The updated user object, the result is identical to the get user call
  *
- * @apiError (401) {NotAuthorized} messageUserOperationProtected Returned if the change is not allowed.
+ * @apiError (401) {NotAuthorized} messageUserOperationProtected Returned if the
+ *                                                               change is not allowed.
  *
  * @apiErrorExample {json} Error-Response:
  *  {
@@ -106,6 +112,7 @@ api.updateUser = {
 /* NOTE this route has also an API v3 version */
 
 /**
+ * @apiIgnore
  * @api {post} /api/v4/user/rebirth Use Orb of Rebirth on user
  * @apiName UserRebirth
  * @apiGroup User
@@ -145,6 +152,7 @@ api.userRebirth = {
 /* NOTE this route has also an API v3 version */
 
 /**
+ * @apiIgnore
  * @api {post} /api/v4/user/reroll Reroll a user using the Fortify Potion
  * @apiName UserReroll
  * @apiGroup User
@@ -178,6 +186,7 @@ api.userReroll = {
 /* NOTE this route has also an API v3 version */
 
 /**
+ * @apiIgnore
  * @api {post} /api/v4/user/reset Reset user
  * @apiName UserReset
  * @apiGroup User
@@ -216,7 +225,7 @@ api.verifyDisplayName = {
   async handler (req, res) {
     req.checkBody({
       displayName: {
-        notEmpty: {errorMessage: res.t('messageMissingDisplayName')},
+        notEmpty: { errorMessage: res.t('messageMissingDisplayName') },
       },
     });
 
@@ -235,4 +244,4 @@ api.verifyDisplayName = {
   },
 };
 
-module.exports = api;
+export default api;

@@ -1,4 +1,4 @@
-import * as Tasks from '../models/task';
+import * as Tasks from '../models/task'; // eslint-disable-line import/no-cycle
 
 const SHARED_COMPLETION = {
   default: 'recurringCompletion',
@@ -15,8 +15,8 @@ async function _deleteUnfinishedTasks (groupMemberTask) {
   await Tasks.Task.deleteMany({
     'group.taskId': groupMemberTask.group.taskId,
     $and: [
-      {userId: {$exists: true}},
-      {userId: {$ne: groupMemberTask.userId}},
+      { userId: { $exists: true } },
+      { userId: { $ne: groupMemberTask.userId } },
     ],
   }).exec();
 }
@@ -24,13 +24,13 @@ async function _deleteUnfinishedTasks (groupMemberTask) {
 async function _evaluateAllAssignedCompletion (masterTask) {
   let completions;
   if (masterTask.group.approval && masterTask.group.approval.required) {
-    completions = await Tasks.Task.count({
+    completions = await Tasks.Task.countDocuments({
       'group.taskId': masterTask._id,
       'group.approval.approved': true,
     }).exec();
-    completions++;
+    completions += 1;
   } else {
-    completions = await Tasks.Task.count({
+    completions = await Tasks.Task.countDocuments({
       'group.taskId': masterTask._id,
       completed: true,
     }).exec();
@@ -41,7 +41,7 @@ async function _evaluateAllAssignedCompletion (masterTask) {
 }
 
 async function handleSharedCompletion (groupMemberTask) {
-  let masterTask = await Tasks.Task.findOne({
+  const masterTask = await Tasks.Task.findOne({
     _id: groupMemberTask.group.taskId,
   }).exec();
 

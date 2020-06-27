@@ -1,5 +1,9 @@
 /* eslint-disable key-spacing */
 
+import moment from 'moment';
+
+export const CURRENT_SEASON = moment().isBefore('2020-08-02') ? 'summer' : '_NONE_';
+
 export const CLASSES = [
   'warrior',
   'rogue',
@@ -38,6 +42,9 @@ export const EVENTS = {
   spring2019: { start: '2019-03-19', end: '2019-05-02' },
   summer2019: { start: '2019-06-18', end: '2019-08-02' },
   fall2019:   { start: '2019-09-24', end: '2019-11-02' },
+  winter2020: { start: '2019-12-19', end: '2020-02-02' },
+  spring2020: { start: '2020-03-17', end: '2020-05-02' },
+  summer2020: { start: '2020-06-18', end: '2020-08-02' },
 };
 
 export const SEASONAL_SETS = {
@@ -77,6 +84,12 @@ export const SEASONAL_SETS = {
     'winter2019WinterStarSet',
     'winter2019BlizzardSet',
     'winter2019PyrotechnicSet',
+
+    // winter 2020
+    'winter2020CarolOfTheMageSet',
+    'winter2020LanternSet',
+    'winter2020EvergreenSet',
+    'winter2020WinterSpiceSet',
   ],
   spring: [
     // spring 2014
@@ -114,6 +127,13 @@ export const SEASONAL_SETS = {
     'spring2019OrchidWarriorSet',
     'spring2019CloudRogueSet',
     'spring2019RobinHealerSet',
+
+    // spring 2020
+
+    'spring2020BeetleWarriorSet',
+    'spring2020IrisHealerSet',
+    'spring2020LapisLazuliRogueSet',
+    'spring2020PuddleMageSet',
   ],
   summer: [
     // summer 2014
@@ -151,6 +171,12 @@ export const SEASONAL_SETS = {
     'summer2019WaterLilyMageSet',
     'summer2019ConchHealerSet',
     'summer2019HammerheadRogueSet',
+
+    // summer 2020
+    'summer2020SeaGlassHealerSet',
+    'summer2020OarfishMageSet',
+    'summer2020CrocodileRogueSet',
+    'summer2020RainbowTroutWarriorSet',
   ],
   fall: [
     // fall 2014
@@ -203,19 +229,19 @@ export const GEAR_TYPES = [
 ];
 
 export const ITEM_LIST = {
-  weapon:          { localeKey: 'weapon',         isEquipment: true  },
-  armor:           { localeKey: 'armor',          isEquipment: true  },
-  head:            { localeKey: 'headgear',       isEquipment: true  },
-  shield:          { localeKey: 'offhand',        isEquipment: true  },
-  back:            { localeKey: 'back',           isEquipment: true  },
-  body:            { localeKey: 'body',           isEquipment: true  },
-  headAccessory:   { localeKey: 'headAccessory',  isEquipment: true  },
-  eyewear:         { localeKey: 'eyewear',        isEquipment: true  },
+  weapon:          { localeKey: 'weapon', isEquipment: true },
+  armor:           { localeKey: 'armor', isEquipment: true },
+  head:            { localeKey: 'headgear', isEquipment: true },
+  shield:          { localeKey: 'offhand', isEquipment: true },
+  back:            { localeKey: 'back', isEquipment: true },
+  body:            { localeKey: 'body', isEquipment: true },
+  headAccessory:   { localeKey: 'headAccessory', isEquipment: true },
+  eyewear:         { localeKey: 'eyewear', isEquipment: true },
   hatchingPotions: { localeKey: 'hatchingPotion', isEquipment: false },
   premiumHatchingPotions: { localeKey: 'hatchingPotion', isEquipment: false },
-  eggs:            { localeKey: 'eggSingular',    isEquipment: false },
-  quests:          { localeKey: 'quest',          isEquipment: false },
-  food:            { localeKey: 'foodTextThe',    isEquipment: false },
+  eggs:            { localeKey: 'eggSingular', isEquipment: false },
+  quests:          { localeKey: 'quest', isEquipment: false },
+  food:            { localeKey: 'foodTextThe', isEquipment: false },
   Saddle:          { localeKey: 'foodSaddleText', isEquipment: false },
   bundles:         { localeKey: 'discountBundle', isEquipment: false },
 };
@@ -261,9 +287,53 @@ export const QUEST_SERIES_ACHIEVEMENTS = {
     'seaserpent',
     'dolphin',
   ],
+  bugBonanza: [
+    'beetle',
+    'butterfly',
+    'snail',
+    'spider',
+  ],
+  bareNecessities: [
+    'monkey',
+    'sloth',
+    'treeling',
+  ],
 };
 
 export const ANIMAL_COLOR_ACHIEVEMENTS = [
-  {color: 'Base', petAchievement: 'backToBasics', petNotificationType: 'ACHIEVEMENT_BACK_TO_BASICS', mountAchievement: 'allYourBase', mountNotificationType: 'ACHIEVEMENT_ALL_YOUR_BASE'},
-  {color: 'Desert', petAchievement: 'dustDevil', petNotificationType: 'ACHIEVEMENT_DUST_DEVIL', mountAchievement: 'aridAuthority', mountNotificationType: 'ACHIEVEMENT_ARID_AUTHORITY'},
+  {
+    color: 'Base',
+    petAchievement: 'backToBasics',
+    petNotificationType: 'ACHIEVEMENT_BACK_TO_BASICS',
+    mountAchievement: 'allYourBase',
+    mountNotificationType: 'ACHIEVEMENT_ALL_YOUR_BASE',
+  },
+  {
+    color: 'Desert',
+    petAchievement: 'dustDevil',
+    petNotificationType: 'ACHIEVEMENT_DUST_DEVIL',
+    mountAchievement: 'aridAuthority',
+    mountNotificationType: 'ACHIEVEMENT_ARID_AUTHORITY',
+  },
+  {
+    color: 'Zombie',
+    petAchievement: 'monsterMagus',
+    petNotificationType: 'ACHIEVEMENT_MONSTER_MAGUS',
+    mountAchievement: 'undeadUndertaker',
+    mountNotificationType: 'ACHIEVEMENT_UNDEAD_UNDERTAKER',
+  },
+  {
+    color: 'White',
+    petAchievement: 'primedForPainting',
+    petNotificationType: 'ACHIEVEMENT_PRIMED_FOR_PAINTING',
+    mountAchievement: 'pearlyPro',
+    mountNotificationType: 'ACHIEVEMENT_PEARLY_PRO',
+  },
+  {
+    color: 'CottonCandyPink',
+    petAchievement: 'tickledPink',
+    petNotificationType: 'ACHIEVEMENT_TICKLED_PINK',
+    mountAchievement: 'rosyOutlook',
+    mountNotificationType: 'ACHIEVEMENT_ROSY_OUTLOOK',
+  },
 ];
