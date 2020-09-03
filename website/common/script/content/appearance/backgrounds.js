@@ -385,6 +385,16 @@ const backgrounds = {
     salt_lake: { },
     viking_ship: { },
   },
+  backgrounds072020: {
+    beach_cabana: { },
+    swimming_among_jellyfish: { },
+    underwater_ruins: { },
+  },
+  backgrounds082020: {
+    camping_out: { },
+    jungle_canopy: { },
+    productivity_plaza: { },
+  },
   timeTravelBackgrounds: {
     airship: {
       price: 1,

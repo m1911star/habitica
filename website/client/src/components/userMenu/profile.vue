@@ -1,15 +1,15 @@
 <template>
   <div
-    v-if="user"
+    v-if="!user && userLoaded"
+  >
+    <error404 />
+  </div>
+  <div
+    v-else-if="userLoaded"
     class="profile"
   >
     <div class="header">
-      <span
-        class="close-icon svg-icon inline icon-10"
-        @click="close()"
-        v-html="icons.close"
-      ></span>
-      <div class="profile-actions">
+      <div class="profile-actions d-flex">
         <router-link
           :to="{ path: '/private-messages', query: { uuid: user._id } }"
           replace
@@ -19,6 +19,7 @@
             class="btn btn-secondary message-icon"
           >
             <div
+              v-once
               class="svg-icon message-icon"
               v-html="icons.message"
             ></div>
@@ -37,12 +38,13 @@
         <button
           v-if="user._id !== userLoggedIn._id && userLoggedIn.inbox.blocks.indexOf(user._id) === -1"
           v-b-tooltip.hover.right="$t('blockWarning')"
-          class="btn btn-secondary block-icon"
+          class="btn btn-secondary block-icon d-flex justify-content-center align-items-center"
           @click="blockUser()"
         >
-          <div v-once
-               class="svg-icon block-icon"
-               v-html="icons.block"
+          <div
+            v-once
+            class="svg-icon block-icon"
+            v-html="icons.block"
           ></div>
         </button>
         <button
@@ -59,7 +61,7 @@
         <button
           v-if="userLoggedIn.contributor.admin"
           v-b-tooltip.hover.right="'Admin - Toggle Tools'"
-          class="btn btn-secondary positive-icon"
+          class="btn btn-secondary positive-icon d-flex justify-content-center align-items-center"
           @click="toggleAdminTools()"
         >
           <div
@@ -286,13 +288,13 @@
         </div>
         <div class="col-12 text-center">
           <button
-            class="btn btn-primary"
+            class="btn btn-primary mr-2"
             @click="save()"
           >
             {{ $t("save") }}
           </button>
           <button
-            class="btn btn-warning"
+            class="btn btn-secondary"
             @click="editing = false"
           >
             {{ $t("cancel") }}
@@ -323,7 +325,7 @@
             >
               <div
                 :id="achievKey + '-achievement'"
-                class="box achievement-container d-flex align-items-center justify-content-center"
+                class="box achievement-container"
                 :class="{'achievement-unearned': !achievement.earned}"
               >
                 <b-popover
@@ -429,6 +431,10 @@
       .character-name, small, .small-text {
         color: #878190;
       }
+    }
+
+    .standard-page {
+      padding-bottom: 0rem;
     }
 
     .modal-content {
@@ -564,8 +570,8 @@
 
     .achievement-wrapper {
       width: 94px;
-      min-width: 94px !important;
       max-width: 94px;
+      min-width: 94px;
       margin-right: 12px;
       margin-left: 12px;
       padding: 0px;
@@ -574,6 +580,7 @@
     .box {
       margin: 0 auto;
       margin-bottom: 1em;
+      padding-top: 1.2em;
       background: $white;
     }
 
@@ -612,6 +619,7 @@
         margin-right: 8px;
         background: $gray-600;
         color: $gray-300;
+        height: fit-content;
       }
     }
   }
@@ -723,7 +731,7 @@ import lock from '@/assets/svg/lock.svg';
 import challenge from '@/assets/svg/challenge.svg';
 import member from '@/assets/svg/member-icon.svg';
 import staff from '@/assets/svg/tier-staff.svg';
-import svgClose from '@/assets/svg/close.svg';
+import error404 from '../404';
 // @TODO: EMAILS.COMMUNITY_MANAGER_EMAIL
 const COMMUNITY_MANAGER_EMAIL = 'admin@habitica.com';
 
@@ -734,6 +742,7 @@ export default {
   components: {
     MemberDetails,
     profileStats,
+    error404,
   },
   props: ['userId', 'startingPage'],
   data () {
@@ -749,7 +758,6 @@ export default {
         lock,
         member,
         staff,
-        close: svgClose,
       }),
       adminToolsLoaded: false,
       userIdToMessage: '',
@@ -767,7 +775,8 @@ export default {
       achievements: {},
       achievementsCategories: {}, // number, open
       content: Content,
-      user: undefined,
+      user: null,
+      userLoaded: false,
     };
   },
   computed: {
@@ -827,43 +836,60 @@ export default {
   },
   methods: {
     async loadUser () {
-      let user = this.userLoggedIn;
+      let user = null;
 
       // Reset editing when user is changed. Move to watch or is this good?
       this.editing = false;
       this.hero = {};
+      this.userLoaded = false;
       this.adminToolsLoaded = false;
 
       const profileUserId = this.userId;
 
       if (profileUserId && profileUserId !== this.userLoggedIn._id) {
         const response = await this.$store.dispatch('members:fetchMember', { memberId: profileUserId });
-        user = response.data.data;
+        if (response.response && response.response.status === 404) {
+          user = null;
+          this.$store.dispatch('snackbars:add', {
+            title: 'Habitica',
+            text: this.$t('messageDeletedUser'),
+            type: 'error',
+            timeout: false,
+          });
+        } else if (response.status && response.status === 200) {
+          user = response.data.data;
+        }
+      } else {
+        user = this.userLoggedIn;
       }
 
-      this.editingProfile.name = user.profile.name;
-      this.editingProfile.imageUrl = user.profile.imageUrl;
-      this.editingProfile.blurb = user.profile.blurb;
+      if (user) {
+        this.editingProfile.name = user.profile.name;
+        this.editingProfile.imageUrl = user.profile.imageUrl;
+        this.editingProfile.blurb = user.profile.blurb;
 
-      if (!user.achievements.quests) user.achievements.quests = {};
-      if (!user.achievements.challenges) user.achievements.challenges = {};
-      // @TODO: this common code should handle the above
-      this.achievements = achievementsLib.getAchievementsForProfile(user);
+        if (!user.achievements.quests) user.achievements.quests = {};
+        if (!user.achievements.challenges) user.achievements.challenges = {};
+        // @TODO: this common code should handle the above
+        this.achievements = achievementsLib.getAchievementsForProfile(user);
 
-      const achievementsCategories = {};
-      Object.keys(this.achievements).forEach(category => {
-        achievementsCategories[category] = {
-          open: false,
-          number: Object.keys(this.achievements[category].achievements).length,
-        };
-      });
+        const achievementsCategories = {};
+        Object.keys(this.achievements).forEach(category => {
+          achievementsCategories[category] = {
+            open: false,
+            number: Object.keys(this.achievements[category].achievements).length,
+          };
+        });
 
-      this.achievementsCategories = achievementsCategories;
+        this.achievementsCategories = achievementsCategories;
 
-      // @TODO For some reason markdown doesn't seem to be handling numbers or maybe undefined?
-      user.profile.blurb = user.profile.blurb ? `${user.profile.blurb}` : '';
+        // @TODO For some reason markdown doesn't seem to be handling numbers or maybe undefined?
+        user.profile.blurb = user.profile.blurb ? `${user.profile.blurb}` : '';
 
-      this.user = user;
+        this.user = user;
+      }
+
+      this.userLoaded = true;
     },
     selectPage (page) {
       this.selectedPage = page || 'profile';
@@ -994,9 +1020,6 @@ export default {
     toggleAchievementsCategory (categoryKey) {
       const status = this.achievementsCategories[categoryKey].open;
       this.achievementsCategories[categoryKey].open = !status;
-    },
-    close () {
-      this.$root.$emit('bv::hide::modal', 'profile');
     },
   },
 };

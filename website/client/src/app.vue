@@ -119,7 +119,6 @@
     #melior {
       margin: 0 auto;
       width: 70.9px;
-      margin-bottom: 1em;
     }
 
     .row {
@@ -218,11 +217,6 @@
     opacity: 0.48;
   }
 
-  /* @TODO: The modal-open class is not being removed. Let's try this for now */
-  .modal {
-    overflow-y: scroll !important;
-  }
-
   .modal-backdrop {
     opacity: .9 !important;
     background-color: $purple-100 !important;
@@ -297,7 +291,7 @@ export default {
     };
   },
   computed: {
-    ...mapState(['isUserLoggedIn', 'browserTimezoneOffset', 'isUserLoaded', 'notificationsRemoved']),
+    ...mapState(['isUserLoggedIn', 'browserTimezoneUtcOffset', 'isUserLoaded', 'notificationsRemoved']),
     ...mapState({ user: 'user.data' }),
     isStaticPage () {
       return this.$route.meta.requiresLogin === false;
@@ -369,7 +363,6 @@ export default {
 
       const isApiCall = url.indexOf('api/v4') !== -1;
       const userV = response.data && response.data.userV;
-      const isCron = url.indexOf('/api/v4/cron') === 0 && method === 'post';
 
       if (this.isUserLoaded && isApiCall && userV) {
         const oldUserV = this.user._v;
@@ -381,9 +374,14 @@ export default {
         // exclude chat seen requests because with real time chat they would be too many
         const isChatSeen = url.indexOf('/chat/seen') !== -1 && method === 'post';
         // exclude POST /api/v4/cron because the user is synced automatically after cron runs
+        const isCron = url.indexOf('/api/v4/cron') === 0 && method === 'post';
+        // exclude skills casting as they already return the synced user
+        const isCast = url.indexOf('/api/v4/user/class/cast') !== -1 && method === 'post';
 
         // Something has changed on the user object that was not tracked here, sync the user
-        if (userV - oldUserV > 1 && !isCron && !isChatSeen && !isUserSync && !isTasksSync) {
+        if (
+          userV - oldUserV > 1 && !isCron && !isChatSeen && !isUserSync && !isTasksSync && !isCast
+        ) {
           Promise.all([
             this.$store.dispatch('user:fetch', { forceLoad: true }),
             this.$store.dispatch('tasks:fetchUserTasks', { forceLoad: true }),
@@ -489,9 +487,10 @@ export default {
         this.hideLoadingScreen();
 
         // Adjust the timezone offset
-        if (this.user.preferences.timezoneOffset !== this.browserTimezoneOffset) {
+        const browserTimezoneOffset = -this.browserTimezoneUtcOffset;
+        if (this.user.preferences.timezoneOffset !== browserTimezoneOffset) {
           this.$store.dispatch('user:set', {
-            'preferences.timezoneOffset': this.browserTimezoneOffset,
+            'preferences.timezoneOffset': browserTimezoneOffset,
           });
         }
 
@@ -513,13 +512,9 @@ export default {
     } else {
       this.hideLoadingScreen();
     }
-
-    this.initializeModalStack();
   },
   beforeDestroy () {
     this.$root.$off('playSound');
-    this.$root.$off('bv::modal::hidden');
-    this.$root.$off('bv::show::modal');
     this.$root.$off('buyModal::showItem');
     this.$root.$off('selectMembersModal::showItem');
   },
@@ -548,112 +543,6 @@ export default {
 
       this.$store.dispatch('auth:logout', { redirectToLogin: true });
       return true;
-    },
-    initializeModalStack () {
-      // Manage modals
-      this.$root.$on('bv::show::modal', (modalId, data = {}) => {
-        if (data.fromRoot) return;
-        const { modalStack } = this.$store.state;
-
-        this.trackGemPurchase(modalId, data);
-
-        // Add new modal to the stack
-        const prev = modalStack[modalStack.length - 1];
-        const prevId = prev ? prev.modalId : undefined;
-        modalStack.push({ modalId, prev: prevId });
-      });
-
-      this.$root.$on('bv::modal::hidden', bvEvent => {
-        let modalId = bvEvent.target && bvEvent.target.id;
-
-        // sometimes the target isn't passed to the hidden event, fallback is the vueTarget
-        if (!modalId) {
-          modalId = bvEvent.vueTarget && bvEvent.vueTarget.id;
-        }
-
-        if (!modalId) {
-          return;
-        }
-
-        const { modalStack } = this.$store.state;
-
-        const modalOnTop = modalStack[modalStack.length - 1];
-
-        // Check for invalid modal. Event systems can send multiples
-        if (!this.validStack(modalStack)) return;
-
-        // If we are moving forward
-        if (modalOnTop && modalOnTop.prev === modalId) return;
-
-        // Remove modal from stack
-        this.$store.state.modalStack.pop();
-
-        // Get previous modal
-        const modalBefore = modalOnTop ? modalOnTop.prev : undefined;
-
-        if (modalBefore) this.$root.$emit('bv::show::modal', modalBefore, { fromRoot: true });
-      });
-
-      // Dismiss modal aggressively. Pass a modal ID to remove a modal instance from the stack
-      // (both the stack entry itself and its "prev" reference) so we don't reopen it
-      this.$root.$on('habitica::dismiss-modal', oldModal => {
-        if (!oldModal) return;
-        this.$root.$emit('bv::hide::modal', oldModal);
-        let removeIndex = this.$store.state.modalStack
-          .map(modal => modal.modalId)
-          .indexOf(oldModal);
-        if (removeIndex >= 0) {
-          this.$store.state.modalStack.splice(removeIndex, 1);
-        }
-        removeIndex = this.$store.state.modalStack
-          .map(modal => modal.prev)
-          .indexOf(oldModal);
-        if (removeIndex >= 0) {
-          delete this.$store.state.modalStack[removeIndex].prev;
-        }
-      });
-    },
-    validStack (modalStack) {
-      const modalsThatCanShowTwice = ['profile'];
-      const modalCount = {};
-      const prevAndCurrent = 2;
-
-      for (const current of modalStack) {
-        if (!modalCount[current.modalId]) modalCount[current.modalId] = 0;
-        modalCount[current.modalId] += 1;
-        if (
-          modalCount[current.modalId] > prevAndCurrent
-          && modalsThatCanShowTwice.indexOf(current.modalId) === -1
-        ) {
-          this.$store.state.modalStack = [];
-          return false;
-        }
-
-        if (!current.prev) continue; // eslint-disable-line
-        if (!modalCount[current.prev]) modalCount[current.prev] = 0;
-        modalCount[current.prev] += 1;
-        if (
-          modalCount[current.prev] > prevAndCurrent
-          && modalsThatCanShowTwice.indexOf(current.prev) === -1
-        ) {
-          this.$store.state.modalStack = [];
-          return false;
-        }
-      }
-
-      return true;
-    },
-    trackGemPurchase (modalId, data) {
-      // Track opening of gems modal unless it's been already tracked
-      // For example the gems button in the menu already tracks the event by itself
-      if (modalId === 'buy-gems' && data.alreadyTracked !== true) {
-        Analytics.track({
-          hitType: 'event',
-          eventCategory: 'button',
-          eventAction: 'click',
-          eventLabel: 'Gems > Wallet',
-        });
-      }
     },
     itemSelected (item) {
       this.selectedItemToBuy = item;

@@ -7,7 +7,6 @@ import amzLib from '../../../../../../website/server/libs/payments/amazon';
 import payments from '../../../../../../website/server/libs/payments/payments';
 import common from '../../../../../../website/common';
 
-
 describe('#upgradeGroupPlan', () => {
   let spy; let data; let user; let group; let
     uuidString;
@@ -32,10 +31,13 @@ describe('#upgradeGroupPlan', () => {
     group = generateGroup({
       name: 'test group',
       type: 'guild',
-      privacy: 'public',
+      privacy: 'private',
       leader: user._id,
     });
     await group.save();
+
+    user.guilds.push(group._id);
+    await user.save();
 
     spy = sinon.stub(amzLib, 'authorizeOnBillingAgreement');
     spy.resolves([]);

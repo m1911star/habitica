@@ -72,7 +72,7 @@
     "todos": "To Do",
     "newTodo": "新しいTo Do",
     "newTodoBulk": "新しいTo Do （１行に１つ）",
-    "todosDesc": "To Doは1度きりで完了します。To Doの価値を上げるために、チェックリストを追加しましょう。",
+    "todosDesc": "To Doは1度きりで完了するタスクです。To Doの報酬を増やすために、チェックリストを追加しましょう。",
     "dueDate": "期限",
     "remaining": "有効",
     "complete": "完了",
@@ -211,5 +211,11 @@
     "sessionOutdated": "セッションが古くなっています。ページを更新するか、syncボタンを押して下さい。",
     "errorTemporaryItem": "これは一時的なアイテムなので、ピン留めすることはできません。",
     "addNotes": "メモを入力する",
-    "addATitle": "タイトルを入力する"
+    "addATitle": "タイトルを入力する",
+    "sureDeleteType": "本当にこの <%= type %>を削除してもいいですか？",
+    "deleteTaskType": "<%= type %>を削除する",
+    "pressEnterToAddTag": "Enterキーでタグを追加：'<%= tagName %>'",
+    "enterTag": "タグを入力してください",
+    "addTags": "タグを追加…",
+    "tomorrow": "明日"
 }

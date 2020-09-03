@@ -14,6 +14,7 @@ import {
 } from '../../../libs/taskManager';
 import { handleSharedCompletion } from '../../../libs/groupTasks';
 import apiError from '../../../libs/apiError';
+import logger from '../../../libs/logger';
 
 const requiredGroupFields = '_id leader tasksOrder name';
 // @TODO: abstract to task lib
@@ -215,7 +216,7 @@ api.assignTask = {
 
     const promises = [];
     const taskText = task.text;
-    const userName = user.profile.name;
+    const userName = `@${user.auth.local.username}`;
 
     if (user._id === assignedUserId) {
       const managerIds = Object.keys(group.managers);
@@ -237,7 +238,7 @@ api.assignTask = {
       });
     }
 
-    promises.push(group.syncTask(task, assignedUser));
+    promises.push(group.syncTask(task, assignedUser, user));
     promises.push(group.save());
     await Promise.all(promises);
 
@@ -362,7 +363,7 @@ api.approveTask = {
     const firstNotificationIndex = firstManagerNotifications.findIndex(notification => notification && notification.data && notification.data.taskId === task._id && notification.type === 'GROUP_TASK_APPROVAL');
     let direction = 'up';
     if (firstManagerNotifications[firstNotificationIndex]) {
-      direction = firstManagerNotifications[firstNotificationIndex].direction;
+      direction = firstManagerNotifications[firstNotificationIndex].direction || direction;
     }
 
     // Remove old notifications
@@ -380,21 +381,29 @@ api.approveTask = {
     assignedUser.addNotification('GROUP_TASK_APPROVED', {
       message: res.t('yourTaskHasBeenApproved', { taskText: task.text }),
       groupId: group._id,
-    });
-
-    assignedUser.addNotification('SCORED_TASK', {
-      message: res.t('yourTaskHasBeenApproved', { taskText: task.text }),
-      scoreTask: task,
+      task,
       direction,
     });
-
-    await handleSharedCompletion(task);
 
     approvalPromises.push(task.save());
     approvalPromises.push(assignedUser.save());
     await Promise.all(approvalPromises);
 
     res.respond(200, task);
+
+    // Wrapping everything in a try/catch block because if an error occurs
+    // using `await` it MUST NOT bubble up because the request has already been handled
+    try {
+      const groupTask = await Tasks.Task.findOne({
+        _id: task.group.taskId,
+      }).exec();
+
+      if (groupTask) {
+        await handleSharedCompletion(groupTask, task);
+      }
+    } catch (e) {
+      logger.error('Error handling group task', e);
+    }
   },
 };
 

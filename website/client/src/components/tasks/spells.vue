@@ -40,14 +40,16 @@
                 v-for="(skill, key) in spells[user.stats.class]"
                 v-if="user.stats.lvl >= skill.lvl"
                 :key="key"
-                v-b-popover.hover.auto="skill.notes()"
+                v-b-popover.hover.auto="skillNotes(skill)"
                 class="col-12 col-md-3"
-                @click="castStart(skill)"
+                @click="!spellDisabled(key) ? castStart(skill) : null"
               >
                 <!-- eslint-enable vue/no-use-v-if-with-v-for -->
-                <div class="spell col-12 row">
+                <div
+                  class="spell col-12 row"
+                  :class="{'disabled': spellDisabled(key)}"
+                >
                   <div class="col-8 details">
-                    <a :class="{'disabled': spellDisabled(key)}"></a>
                     <div
                       class="img"
                       :class="`shop_${skill.key} shop-sprite item-img`"
@@ -88,9 +90,6 @@
     }
   }
 
-  .drawer-container {
-  }
-
   .drawer-slider {
     margin-top: 1em;
   }
@@ -100,7 +99,7 @@
     white-space: initial;
   }
 
-  .spell:hover {
+  .spell:hover:not(.disabled) {
     cursor: pointer;
     border: solid 2px #50b5e9;
   }
@@ -115,6 +114,10 @@
     padding-right: 0;
     padding-left: 0;
     overflow: hidden;
+
+    &.disabled {
+      opacity: 0.5;
+    }
 
     .details {
       text-align: left;
@@ -204,9 +207,9 @@
 </style>
 
 <script>
-import spells from '@/../../common/script/content/spells';
+import spells, { stealthBuffsToAdd } from '@/../../common/script/content/spells';
 
-import { mapState } from '@/libs/store';
+import { mapState, mapGetters } from '@/libs/store';
 import notifications from '@/mixins/notifications';
 import spellsMixin from '@/mixins/spells';
 import Drawer from '@/components/ui/drawer';
@@ -237,6 +240,9 @@ export default {
   },
   computed: {
     ...mapState({ user: 'user.data' }),
+    ...mapGetters({
+      getUnfilteredTaskList: 'tasks:getUnfilteredTaskList',
+    }),
     openStatus () {
       return this.$store.state.spellOptions.spellDrawOpen ? 1 : 0;
     },
@@ -267,29 +273,23 @@ export default {
       );
     },
     spellDisabled (skill) {
-      if (skill === 'frost' && this.user.stats.buffs.streaks) {
-        return true;
-      }
-      // @TODO: Implement
-      // } else if (skill === 'stealth' && this.user.stats.buffs.stealth
-      // >= this.user.dailys.length) {
-      //   return true;
-      // }
+      const incompleteDailiesDue = this.getUnfilteredTaskList('daily').filter(daily => !daily.completed && daily.isDue).length;
+      if (skill === 'frost' && this.user.stats.buffs.streaks) return true;
+      if (skill === 'stealth' && this.user.stats.buffs.stealth >= incompleteDailiesDue) return true;
 
       return false;
     },
-    // @TODO is this used?
     skillNotes (skill) {
       let notes = skill.notes();
 
       if (skill.key === 'frost' && this.spellDisabled(skill.key)) {
-        notes = this.$t('spellWizardFrostAlreadyCast');
+        notes = this.$t('spellAlreadyCast');
       } else if (skill.key === 'stealth' && this.spellDisabled(skill.key)) {
-        notes = this.$t('spellRogueStealthMaxedOut');
+        notes = this.$t('spellAlreadyCast');
       } else if (skill.key === 'stealth') {
         notes = this.$t('spellRogueStealthDaliesAvoided', {
           originalText: notes,
-          number: this.user.stats.buffs.stealth,
+          number: stealthBuffsToAdd(this.user),
         });
       }
 

@@ -312,6 +312,16 @@ const armor = {
     con: 6,
     set: 'fiddler',
   },
+  pirateOutfit: {
+    con: 4,
+    int: 4,
+    set: 'pirate',
+  },
+  heroicHerbalistRobe: {
+    con: 7,
+    int: 7,
+    set: 'herbalist',
+  },
 };
 
 const body = {
@@ -630,6 +640,10 @@ const head = {
     per: 6,
     set: 'fiddler',
   },
+  heroicHerbalistCrispinette: {
+    int: 9,
+    set: 'herbalist',
+  },
 };
 
 const shield = {
@@ -806,6 +820,14 @@ const shield = {
   lifeBuoy: {
     con: 12,
     set: 'lifeguard',
+  },
+  piratesCompanion: {
+    per: 8,
+    set: 'pirate',
+  },
+  mortarAndPestle: {
+    con: 9,
+    set: 'herbalist',
   },
 };
 
@@ -1076,6 +1098,10 @@ const weapon = {
   beachFlag: {
     per: 12,
     set: 'lifeguard',
+  },
+  handyHook: {
+    str: 8,
+    set: 'pirate',
   },
 };
 
